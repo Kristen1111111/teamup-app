@@ -1,0 +1,67 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #d9d6cd;
+  font-family: 'Hanken Grotesk', -apple-system, sans-serif;
+  color: #1c1815;
+}
+
+/* hidden scrollbars, matching the prototype's .tu-scroll */
+.tu-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.tu-scroll {
+  scrollbar-width: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+input {
+  font-family: inherit;
+}
+
+/* hover affordance equivalent to the prototype's style-hover */
+.tu-press {
+  transition: opacity 0.15s, transform 0.05s;
+}
+.tu-press:hover {
+  opacity: 0.9;
+}
+.tu-press:active {
+  transform: scale(0.99);
+}
+
+@keyframes tu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* On phones, let the frame fill the viewport (real mobile web app);
+   on larger screens keep the framed mockup from the design. */
+@media (max-width: 480px) {
+  .tu-stage {
+    padding: 0 !important;
+    background: #f4f2ec !important;
+  }
+  .tu-frame {
+    width: 100vw !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
