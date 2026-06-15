@@ -39,3 +39,29 @@ export function placesLabel(a: Activity): string {
   if (left <= 0) return 'Complet'
   return left > 1 ? `${left} places` : `${left} place`
 }
+
+export type Coords = { lat: number; lng: number }
+
+// Great-circle distance in km between two points (Haversine).
+export function distanceKm(a: Coords, b: Coords): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const la1 = (a.lat * Math.PI) / 180
+  const la2 = (b.lat * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+// Distance from `from` to the activity venue, or null if either side lacks coords.
+export function activityDistanceKm(a: Activity, from: Coords | null): number | null {
+  if (!from || a.lat == null || a.lng == null) return null
+  return distanceKm(from, { lat: a.lat, lng: a.lng })
+}
+
+// "850 m" / "1,2 km" / "12 km"
+export function formatDistance(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`
+  if (km < 10) return `${km.toFixed(1).replace('.', ',')} km`
+  return `${Math.round(km)} km`
+}

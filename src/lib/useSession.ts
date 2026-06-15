@@ -11,6 +11,11 @@ export function useSession() {
   async function loadProfile(authId: string) {
     // Bootstrap demo content on first login, then read the profile back.
     await supabase.rpc('bootstrap_demo')
+    // Bloc 2: seed "Mes activités" demo data + (re)generate due reminders.
+    await supabase.rpc('bootstrap_bloc2')
+    await supabase.rpc('generate_reminders')
+    // Bloc 4: seed messagerie + file de modération (idempotent).
+    await supabase.rpc('bootstrap_bloc4')
     const { data } = await supabase.from('profiles').select('*').eq('auth_id', authId).single()
     setProfile((data as Profile) ?? null)
   }

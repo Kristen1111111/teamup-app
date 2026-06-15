@@ -3,7 +3,7 @@ import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../lib/types'
 import { ChevronLeft, Lock, Heart } from '../components/icons'
-import type { ScreenName } from '../App'
+import type { Go } from '../App'
 
 type Coplayer = { id: string; name: string; initial: string; color: string; meta: string }
 type Kind = 'rejouer' | 'ami' | 'plus'
@@ -18,7 +18,7 @@ function key(id: string, k: Kind) {
   return `${id}:${k}`
 }
 
-export default function Revoir({ profile, go }: { profile: Profile; go: (s: ScreenName) => void }) {
+export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
   const [activityId, setActivityId] = useState<string | null>(null)
   const [meta, setMeta] = useState('APRÈS TON DERNIER MATCH')
   const [coplayers, setCoplayers] = useState<Coplayer[]>([])
@@ -85,6 +85,12 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // F9 — ouvre (ou crée) le fil 1-à-1 avec ce co-joueur et bascule sur la messagerie
+  async function discuter(coId: string) {
+    const { data, error } = await supabase.rpc('dm_conversation', { other: coId })
+    if (!error && data) go('messages', data as string)
+  }
+
   async function toggle(coId: string, k: Kind) {
     if (!activityId) return
     const kk = key(coId, k)
@@ -108,16 +114,16 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
   }
 
   return (
-    <>
+    <div style={{ maxWidth: 920, margin: '0 auto' }}>
       <div style={{ paddingBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 20px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={() => go('feed')} style={backBtn}>
             <ChevronLeft />
           </button>
-          <div style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>Ouvert à se revoir</div>
+          <div style={{ fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap' }}>Ouvert à se revoir</div>
         </div>
 
-        <div style={{ padding: '16px 22px 0' }}>
+        <div style={{ padding: '18px 0 0', maxWidth: 620 }}>
           <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '1.2px', color: C.prune, fontWeight: 600 }}>{meta}</div>
           <h1 style={{ fontFamily: FONT.serif, fontSize: 27, fontWeight: 500, lineHeight: 1.14, marginTop: 8, letterSpacing: '-.01em' }}>
             Avec qui serais-tu partant pour rejouer ?
@@ -146,7 +152,7 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
           </div>
         </div>
 
-        <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 13 }}>
+        <div className="tu-pair-grid" style={{ marginTop: 20 }}>
           {coplayers.map((c) => {
             const matchedKind = KINDS.find((kk) => mine.has(key(c.id, kk.k)) && incoming.has(key(c.id, kk.k)))?.k
             const matchText =
@@ -228,7 +234,23 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
                   >
                     <Heart size={17} />
                     <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#fff', lineHeight: 1.25 }}>{matchText}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textDecoration: 'underline' }}>Discuter</span>
+                    <button
+                      onClick={() => discuter(c.id)}
+                      className="tu-press"
+                      style={{
+                        flex: 'none',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: C.green,
+                        background: '#fff',
+                        border: 'none',
+                        borderRadius: 999,
+                        padding: '6px 13px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Discuter
+                    </button>
                   </div>
                 )}
               </div>
@@ -242,21 +264,12 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
         </div>
       </div>
 
-      <div
-        style={{
-          position: 'sticky',
-          bottom: 0,
-          flex: 'none',
-          padding: '12px 22px 24px',
-          background: C.card,
-          borderTop: `1px solid ${C.line}`,
-        }}
-      >
+      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
         <button
           onClick={() => go('feed')}
           className="tu-press"
           style={{
-            width: '100%',
+            minWidth: 300,
             padding: 15,
             borderRadius: 15,
             border: 'none',
@@ -270,7 +283,7 @@ export default function Revoir({ profile, go }: { profile: Profile; go: (s: Scre
           Valider mes choix
         </button>
       </div>
-    </>
+    </div>
   )
 }
 

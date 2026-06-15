@@ -3,7 +3,7 @@ import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Profile, Sport } from '../lib/types'
 import { Close, Timer, Pin, Lock, Minus, Plus, Chevron } from '../components/icons'
-import type { ScreenName } from '../App'
+import type { Go } from '../App'
 
 const WHEN = [
   { k: 'soir', l: 'Ce soir' },
@@ -45,7 +45,7 @@ function startDate(when: string, minutes: number): Date {
   return d
 }
 
-export default function Create({ profile, go }: { profile: Profile; go: (s: ScreenName) => void }) {
+export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   const [sports, setSports] = useState<Sport[]>([])
   const [cSport, setCSport] = useState('foot')
   const [cWhen, setCWhen] = useState('soir')
@@ -70,33 +70,39 @@ export default function Create({ profile, go }: { profile: Profile; go: (s: Scre
     const end = new Date(start.getTime() + 90 * 60 * 1000)
     const level = LEVELS.find((l) => l.k === cLevel)!.full
     const poste = cPoste === 'any' ? null : POSTES.find((p) => p.k === cPoste)!.l
-    await supabase.from('activities').insert({
-      organizer_id: profile.id,
-      sport_key: cSport,
-      ask: `Il manque ${cPlaces} joueur${cPlaces > 1 ? 's' : ''}`,
-      venue_name: 'City Stade Léon · Paris 11e',
-      venue_code: 'CITY STADE LÉON',
-      exact_address: '12 rue Léon, 75011 Paris',
-      starts_at: start.toISOString(),
-      ends_at: end.toISOString(),
-      level,
-      mode: cMode,
-      poste,
-      total_slots: cPlaces,
-    })
+    const { data, error } = await supabase
+      .from('activities')
+      .insert({
+        organizer_id: profile.id,
+        sport_key: cSport,
+        ask: `Il manque ${cPlaces} joueur${cPlaces > 1 ? 's' : ''}`,
+        venue_name: 'City Stade Léon · Paris 11e',
+        venue_code: 'CITY STADE LÉON',
+        exact_address: '12 rue Léon, 75011 Paris',
+        starts_at: start.toISOString(),
+        ends_at: end.toISOString(),
+        level,
+        mode: cMode,
+        poste,
+        total_slots: cPlaces,
+      })
+      .select('id')
+      .single()
     setBusy(false)
-    go('feed')
+    // Land on the management view — that's where the shareable link lives.
+    if (!error && data) go('manage', (data as { id: string }).id)
+    else go('feed')
   }
 
   return (
-    <>
+    <div style={{ maxWidth: 680, margin: '0 auto' }}>
       <div style={{ paddingBottom: 18 }}>
         {/* header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 6px' }}>
           <button onClick={() => go('feed')} style={roundBtn}>
             <Close />
           </button>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Nouvelle activité</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Nouvelle activité</div>
           <div
             style={{
               display: 'flex',
@@ -358,15 +364,14 @@ export default function Create({ profile, go }: { profile: Profile; go: (s: Scre
         </Section>
       </div>
 
-      {/* sticky publish footer */}
+      {/* publish footer */}
       <div
         style={{
-          position: 'sticky',
-          bottom: 0,
-          flex: 'none',
-          padding: '12px 22px 24px',
+          margin: '22px 22px 0',
+          padding: '18px 20px',
           background: C.card,
-          borderTop: `1px solid ${C.line}`,
+          border: `1px solid ${C.line}`,
+          borderRadius: 20,
         }}
       >
         <button
@@ -392,7 +397,7 @@ export default function Create({ profile, go }: { profile: Profile; go: (s: Scre
           Lien partageable · WhatsApp · SMS · Instagram
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

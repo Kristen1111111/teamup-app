@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#F4F2EC"/>
+  <g opacity="0.06">
+    <rect width="1200" height="630" fill="url(#stripes)"/>
+  </g>
+  <rect x="64" y="64" width="1072" height="502" rx="40" fill="#FFFFFF" stroke="#E9E4DA" stroke-width="2"/>
+  <g transform="translate(112,124)">
+    <rect width="68" height="68" rx="20" fill="#5C2049"/>
+    <path d="M34 56C18 44 12 35 12 27c0-8 6-13 12-13 4 0 8 2 10 6 2-4 6-6 10-6 6 0 12 5 12 13 0 8-6 17-22 29Z" fill="#fff" transform="translate(0,2)"/>
+  </g>
+  <text x="200" y="172" font-family="'Hanken Grotesk',Arial,sans-serif" font-size="44" font-weight="700" fill="#1C1815" letter-spacing="-1">Team<tspan fill="#5C2049">Up</tspan></text>
+  <text x="112" y="320" font-family="Georgia,'Newsreader',serif" font-size="76" font-weight="500" fill="#1C1815" letter-spacing="-2">Il manque des joueurs.</text>
+  <text x="112" y="408" font-family="Georgia,'Newsreader',serif" font-size="76" font-weight="500" fill="#5C2049" letter-spacing="-2">Tu joues avec nous ?</text>
+  <text x="112" y="486" font-family="'Hanken Grotesk',Arial,sans-serif" font-size="32" font-weight="500" fill="#8C8377">Sport, lieu, horaire et places restantes — consultable sans compte.</text>
+  <g transform="translate(112,512)" font-family="'JetBrains Mono',monospace" font-size="24" font-weight="600" fill="#2E6B45">
+    <circle cx="10" cy="-8" r="6" fill="#2E6B45"/>
+    <text x="28" y="0">Confiance par les faits · présence vérifiée</text>
+  </g>
+  <defs>
+    <pattern id="stripes" width="26" height="26" patternTransform="rotate(125)" patternUnits="userSpaceOnUse">
+      <rect width="2" height="26" fill="#1C1815"/>
+    </pattern>
+  </defs>
+</svg>

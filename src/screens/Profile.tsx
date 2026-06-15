@@ -21,9 +21,10 @@ export default function Profile({
   refreshProfile: () => void
   go: (s: ScreenName) => void
 }) {
-  void go
   const [playing, setPlaying] = useState<PlayingRow[]>([])
   const [history, setHistory] = useState<HistoryRow[]>([])
+  const [copied, setCopied] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     supabase
@@ -63,27 +64,138 @@ export default function Profile({
     await supabase.from('profiles').update({ open_to_meet: next }).eq('id', profile.id)
   }
 
+  async function share() {
+    const url = `${window.location.origin}/?profile=${profile.id}`
+    const data = {
+      title: `${profile.first_name} ${profile.last_initial} sur TeamUp`,
+      text: 'Mon profil joueur sur TeamUp',
+      url,
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share(data)
+        return
+      }
+    } catch {
+      return // share sheet dismissed by the user
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   const badges = [profile.verified ? 'Vérifié' : null, 'Ponctuel', 'Capitaine'].filter(Boolean) as string[]
   const circumference = 2 * Math.PI * 37
   const dash = (profile.attendance_pct / 100) * circumference
 
   return (
-    <div style={{ paddingBottom: 26 }}>
-      {/* header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 22px 0' }}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>Profil</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={iconBtn} title="Partager">
+    <div>
+      {/* page header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h1 style={{ fontFamily: FONT.serif, fontSize: 32, fontWeight: 500, letterSpacing: '-.01em' }}>Mon profil</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {copied && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C.green,
+                background: C.greenSoft,
+                borderRadius: 999,
+                padding: '7px 12px',
+              }}
+            >
+              <Check size={12} stroke={C.green} sw={3} />
+              Lien copié
+            </span>
+          )}
+          <button style={iconBtn} onClick={share} title="Partager mon profil">
             <Share />
           </button>
-          <button style={iconBtn} onClick={() => supabase.auth.signOut()} title="Déconnexion / réglages">
-            <Dots />
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button style={iconBtn} onClick={() => setMenuOpen((o) => !o)} title="Réglages">
+              <Dots />
+            </button>
+            {menuOpen && (
+              <>
+                <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: 0,
+                    zIndex: 60,
+                    minWidth: 180,
+                    background: C.card,
+                    border: `1px solid ${C.line}`,
+                    borderRadius: 14,
+                    padding: 6,
+                    boxShadow: '0 18px 40px -16px rgba(40,28,34,.4)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      go('edit')
+                    }}
+                    style={menuItemStyle}
+                  >
+                    Modifier le profil
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      go('settings')
+                    }}
+                    style={menuItemStyle}
+                  >
+                    Paramètres &amp; sécurité
+                  </button>
+                  {profile.is_moderator && (
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false)
+                        go('moderation')
+                      }}
+                      style={menuItemStyle}
+                    >
+                      Modération
+                    </button>
+                  )}
+                  <div style={{ height: 1, background: C.line, margin: '5px 4px' }} />
+                  <button onClick={() => supabase.auth.signOut()} style={{ ...menuItemStyle, color: '#A53F3F' }}>
+                    Se déconnecter
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* identity */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 22px 4px', textAlign: 'center' }}>
+      <div className="tu-profile-grid">
+        {/* ── identity rail ───────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* identity */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              background: C.card,
+              border: `1px solid ${C.line}`,
+              borderRadius: 22,
+              padding: 24,
+            }}
+          >
         <div style={{ position: 'relative', width: 88, height: 88 }}>
           <div
             style={{
@@ -129,19 +241,18 @@ export default function Profile({
         </p>
       </div>
 
-      {/* reliability */}
-      <div
-        style={{
-          margin: '14px 22px 0',
-          background: C.card,
-          border: `1px solid ${C.line}`,
-          borderRadius: 22,
-          padding: 18,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 18,
-        }}
-      >
+          {/* reliability */}
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.line}`,
+              borderRadius: 22,
+              padding: 18,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 18,
+            }}
+          >
         <div style={{ position: 'relative', flex: 'none', width: 84, height: 84 }}>
           <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
             <circle cx="42" cy="42" r="37" fill="none" stroke={C.line} strokeWidth="8" />
@@ -168,31 +279,34 @@ export default function Profile({
         </div>
       </div>
 
-      {/* badges */}
-      <div style={{ display: 'flex', gap: 8, padding: '14px 22px 0', flexWrap: 'wrap' }}>
-        {badges.map((b) => (
-          <span
-            key={b}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12.5,
-              fontWeight: 600,
-              background: C.card,
-              border: `1px solid ${C.line}`,
-              borderRadius: 999,
-              padding: '7px 13px',
-            }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.prune }} />
-            {b}
-          </span>
-        ))}
-      </div>
+          {/* badges */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {badges.map((b) => (
+              <span
+                key={b}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  background: C.card,
+                  border: `1px solid ${C.line}`,
+                  borderRadius: 999,
+                  padding: '7px 13px',
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.prune }} />
+                {b}
+              </span>
+            ))}
+          </div>
+        </div>
 
-      {/* what I play */}
-      <Card label="CE QUE JE JOUE" labelColor={C.prune}>
+        {/* ── content column ──────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* what I play */}
+          <Card label="CE QUE JE JOUE" labelColor={C.prune}>
         <div style={{ marginTop: 13, display: 'flex', flexDirection: 'column', gap: 13 }}>
           {playing.map((s) => (
             <div key={s.sport.key} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -220,9 +334,9 @@ export default function Profile({
         </div>
       </Card>
 
-      {/* perfect match prompt */}
-      {profile.perfect_match && (
-        <div style={{ margin: '14px 22px 0', background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 20 }}>
+          {/* perfect match prompt */}
+          {profile.perfect_match && (
+            <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 20 }}>
           <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '1.2px', color: C.muted, fontWeight: 600 }}>
             LE MATCH PARFAIT POUR MOI
           </div>
@@ -232,9 +346,9 @@ export default function Profile({
         </div>
       )}
 
-      {/* history */}
-      <div style={{ margin: '18px 22px 0' }}>
-        <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '1.2px', color: C.muted, fontWeight: 600, paddingLeft: 4 }}>
+          {/* history */}
+          <div>
+            <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '1.2px', color: C.muted, fontWeight: 600, paddingLeft: 4 }}>
           DERNIERS MATCHS
         </div>
         <div style={{ marginTop: 10, background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, overflow: 'hidden' }}>
@@ -275,19 +389,18 @@ export default function Profile({
         </div>
       </div>
 
-      {/* open to meet toggle */}
-      <div
-        style={{
-          margin: '18px 22px 0',
-          background: C.card,
-          border: `1px solid ${C.line}`,
-          borderRadius: 22,
-          padding: '16px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 13,
-        }}
-      >
+          {/* open to meet toggle */}
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.line}`,
+              borderRadius: 22,
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 13,
+            }}
+          >
         <span
           style={{
             flex: 'none',
@@ -325,7 +438,9 @@ export default function Profile({
           }}
         >
           <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-        </button>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -342,7 +457,7 @@ function Stat({ n, label }: { n: number; label: string }) {
 
 function Card({ label, labelColor, children }: { label: string; labelColor: string; children: React.ReactNode }) {
   return (
-    <div style={{ margin: '18px 22px 0', background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 18 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 18 }}>
       <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '1.2px', color: labelColor, fontWeight: 600 }}>{label}</div>
       {children}
     </div>
@@ -360,4 +475,17 @@ const iconBtn: React.CSSProperties = {
   justifyContent: 'center',
   cursor: 'pointer',
   color: C.ink,
+}
+
+const menuItemStyle: React.CSSProperties = {
+  width: '100%',
+  textAlign: 'left',
+  padding: '9px 10px',
+  borderRadius: 9,
+  border: 'none',
+  background: 'transparent',
+  color: C.ink,
+  fontSize: 13.5,
+  fontWeight: 600,
+  cursor: 'pointer',
 }

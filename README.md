@@ -65,6 +65,22 @@ En mode dev, on peut afficher un écran avec le profil de démo sans se connecte
 
 Le profil est créé automatiquement à l'inscription (trigger `handle_new_user`).
 
+## Bloc 5 — Hors MVP (reporté)
+
+Le PRD signale lui-même ce bloc comme « ambitieux et reportable ». Décision prise
+avec la porteuse du projet le **2026-06-15** : **les deux features sont reportées**,
+aucun code livré. Elles sont consignées ici pour ne pas être perdues, avec la
+condition qui lèverait le report.
+
+| Réf | Feature | Pourquoi reporté | Condition de levée |
+|-----|---------|------------------|--------------------|
+| **F12** | Auth téléphone + SMS (US1 strict, remplace le magic-link) | L'OTP par SMS exige un **fournisseur payant** (Twilio / Vonage / MessageBird) : compte + credentials que seule la porteuse peut ouvrir. Le **magic-link e-mail couvre le même besoin sans coût** et reste l'auth de production. | Ouvrir un compte fournisseur SMS, le configurer dans Supabase Auth → Providers (Phone), puis brancher le parcours `signInWithOtp({ phone })` + écran de saisie du code côté `Login.tsx`. |
+| **F13** | Apps natives iOS / Android | Chantier **multi-plateforme** lourd ; publication store = comptes Apple/Google payants + Xcode/Android Studio. Jugé hors périmètre MVP par le PRD. | Depuis l'app web existante, deux chemins : **PWA installable** (manifest + service worker, sans store) — le plus rapide ; ou **wrapper Capacitor** pour empaqueter en projet natif et viser les stores. |
+
+> Tant que ces conditions ne sont pas réunies, le périmètre de production reste :
+> auth **magic-link e-mail** + **web app mobile-first** (installable manuellement
+> via le navigateur, sans build natif).
+
 ## Notes
 
 - `total_slots` = joueurs déjà confirmés **+** places encore à compléter ;

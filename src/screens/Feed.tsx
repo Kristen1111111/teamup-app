@@ -2,29 +2,53 @@ import { useEffect, useMemo, useState } from 'react'
 import { C, FONT, MODE_LABEL } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Activity, Profile, Sport } from '../lib/types'
-import { formatSlot, placesLabel, slotsLeft } from '../lib/format'
-import { Pin, Clock, Chevron, ChevronRight, Heart, VerifiedDot } from '../components/icons'
-import type { ScreenName } from '../App'
+import { formatSlot, placesLabel, slotsLeft, activityDistanceKm, formatDistance } from '../lib/format'
+import { Pin, Clock, ChevronRight, Heart, VerifiedDot } from '../components/icons'
+import { ACTIVITY_SELECT } from '../lib/queries'
+import { useGeo } from '../lib/useGeo'
+import type { Go } from '../App'
 
-const ACTIVITY_SELECT = `
-  *,
-  organizer:profiles!activities_organizer_id_fkey(*),
-  sport:sports(*),
-  participants:activity_participants(
-    profile_id, status, checked_in,
-    profile:profiles(id, first_name, last_initial, avatar_color)
-  )
-`
+type DateKey = 'all' | 'today' | 'week'
+const DATE_DEFS: { k: DateKey; l: string }[] = [
+  { k: 'all', l: 'Tous' },
+  { k: 'today', l: "Aujourd'hui" },
+  { k: 'week', l: 'Cette semaine' },
+]
+const LEVEL_DEFS = ['all', 'Débutant', 'Intermédiaire', 'Confirmé'] as const
+type LevelKey = (typeof LEVEL_DEFS)[number]
+const DIST_DEFS: { km: number | null; l: string }[] = [
+  { km: null, l: 'Toutes' },
+  { km: 2, l: '2 km' },
+  { km: 5, l: '5 km' },
+  { km: 10, l: '10 km' },
+]
 
-export default function Feed({ profile, go }: { profile: Profile; go: (s: ScreenName) => void }) {
+function endOfToday(): Date {
+  const d = new Date()
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
   const [sports, setSports] = useState<Sport[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
-  const [filter, setFilter] = useState('all')
   const [revoirCount, setRevoirCount] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  // Filters (F8): sport (existing) + date / level / available slots / distance.
+  const [sport, setSport] = useState('all')
+  const [dateKey, setDateKey] = useState<DateKey>('all')
+  const [level, setLevel] = useState<LevelKey>('all')
+  const [onlyAvail, setOnlyAvail] = useState(false)
+  const [maxDist, setMaxDist] = useState<number | null>(null)
+  const [verifiedOnly, setVerifiedOnly] = useState(false) // F10
+  const [blocked, setBlocked] = useState<Set<string>>(new Set()) // F10
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  const geo = useGeo()
+
   async function load() {
-    const [{ data: sp }, { data: acts }, { data: intents }] = await Promise.all([
+    const [{ data: sp }, { data: acts }, { data: intents }, { data: blocks }] = await Promise.all([
       supabase.from('sports').select('*').order('sort_order'),
       supabase
         .from('activities')
@@ -32,10 +56,12 @@ export default function Feed({ profile, go }: { profile: Profile; go: (s: Screen
         .gte('starts_at', new Date().toISOString())
         .order('starts_at', { ascending: true }),
       supabase.from('meet_intents').select('from_profile').eq('to_profile', profile.id),
+      supabase.from('blocks').select('blocked_id').eq('blocker_id', profile.id),
     ])
     setSports((sp as Sport[]) ?? [])
-    setActivities((acts as Activity[]) ?? [])
+    setActivities((acts as unknown as Activity[]) ?? [])
     setRevoirCount(new Set((intents ?? []).map((i: { from_profile: string }) => i.from_profile)).size)
+    setBlocked(new Set((blocks ?? []).map((b: { blocked_id: string }) => b.blocked_id)))
   }
 
   useEffect(() => {
@@ -43,10 +69,33 @@ export default function Feed({ profile, go }: { profile: Profile; go: (s: Screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const shown = useMemo(
-    () => activities.filter((a) => filter === 'all' || a.sport_key === filter),
-    [activities, filter],
-  )
+  const geoOn = geo.status === 'granted' && !!geo.coords
+
+  // Apply every filter, then sort by proximity when geolocation is on, else by date.
+  const shown = useMemo(() => {
+    const todayEnd = endOfToday().getTime()
+    const weekEnd = Date.now() + 7 * 24 * 3600 * 1000
+    const rows = activities
+      .map((a) => ({ a, dist: activityDistanceKm(a, geoOn ? geo.coords : null) }))
+      .filter(({ a, dist }) => {
+        if (blocked.has(a.organizer_id)) return false // F10 — masque les profils bloqués
+        if (verifiedOnly && !a.organizer.verified) return false // F10 — vérifiés uniquement
+        if (sport !== 'all' && a.sport_key !== sport) return false
+        const t = +new Date(a.starts_at)
+        if (dateKey === 'today' && t > todayEnd) return false
+        if (dateKey === 'week' && t > weekEnd) return false
+        if (level !== 'all' && a.level !== level && a.level !== 'Tous niveaux') return false
+        if (onlyAvail && slotsLeft(a) <= 0) return false
+        if (geoOn && maxDist != null && dist != null && dist > maxDist) return false
+        return true
+      })
+    rows.sort((x, y) =>
+      geoOn && x.dist != null && y.dist != null
+        ? x.dist - y.dist
+        : +new Date(x.a.starts_at) - +new Date(y.a.starts_at),
+    )
+    return rows
+  }, [activities, sport, dateKey, level, onlyAvail, maxDist, verifiedOnly, blocked, geoOn, geo.coords])
 
   async function join(a: Activity) {
     setBusyId(a.id)
@@ -57,73 +106,156 @@ export default function Feed({ profile, go }: { profile: Profile; go: (s: Screen
   }
 
   const filterDefs = [{ key: 'all', label: 'Tous' }, ...sports.map((s) => ({ key: s.key, label: s.label }))]
+  const activeCount =
+    (dateKey !== 'all' ? 1 : 0) +
+    (level !== 'all' ? 1 : 0) +
+    (onlyAvail ? 1 : 0) +
+    (maxDist != null ? 1 : 0) +
+    (verifiedOnly ? 1 : 0)
 
   return (
     <div>
-      {/* header */}
-      <div style={{ padding: '6px 22px 2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: '-.02em' }}>
-          Team<span style={{ color: C.prune }}>Up</span>
-        </div>
-        <button
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            background: C.card,
-            border: `1px solid ${C.line}`,
-            borderRadius: 999,
-            padding: '7px 12px',
-            fontSize: 13,
-            fontWeight: 600,
-            color: C.ink,
-            cursor: 'pointer',
-          }}
-        >
-          <Pin size={14} stroke={C.prune} sw={1.9} />
-          {profile.city}
-          <Chevron size={11} />
-        </button>
-      </div>
-
-      <div style={{ padding: '10px 22px 2px' }}>
-        <h1 style={{ fontFamily: FONT.serif, fontSize: 30, lineHeight: 1.08, fontWeight: 500, letterSpacing: '-.01em' }}>
+      {/* hero */}
+      <div style={{ paddingBottom: 4 }}>
+        <h1 style={{ fontFamily: FONT.serif, fontSize: 40, lineHeight: 1.06, fontWeight: 500, letterSpacing: '-.02em' }}>
           Près de toi, ce soir
         </h1>
-        <p style={{ marginTop: 6, fontSize: 13.5, color: C.muted, fontWeight: 500 }}>
+        <p style={{ marginTop: 8, fontSize: 15, color: C.muted, fontWeight: 500 }}>
           {shown.length} activité{shown.length > 1 ? 's' : ''} cherche{shown.length > 1 ? 'nt' : ''} encore des joueurs
+          {geoOn && ' · triées par distance'}
         </p>
       </div>
 
-      {/* filter chips */}
-      <div className="tu-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '14px 22px 12px' }}>
+      {/* sport chips */}
+      <div className="tu-scroll" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '18px 0 12px' }}>
         {filterDefs.map((d) => {
-          const on = filter === d.key
+          const on = sport === d.key
           return (
-            <button
-              key={d.key}
-              onClick={() => setFilter(d.key)}
-              style={{
-                padding: '9px 15px',
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                cursor: 'pointer',
-                border: `1px solid ${on ? C.prune : C.line}`,
-                background: on ? C.prune : C.card,
-                color: on ? '#fff' : C.ink,
-                transition: 'all .15s',
-              }}
-            >
+            <button key={d.key} onClick={() => setSport(d.key)} style={chip(on)}>
               {d.label}
             </button>
           )
         })}
       </div>
 
+      {/* secondary toolbar: geo + filters toggle */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingBottom: 14 }}>
+        <GeoButton geo={geo} active={geoOn} />
+        <button
+          onClick={() => setPanelOpen((o) => !o)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '9px 14px',
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            border: `1px solid ${panelOpen || activeCount ? C.prune : C.line}`,
+            background: panelOpen || activeCount ? C.pruneSoft : C.card,
+            color: C.prune,
+            transition: 'all .15s',
+          }}
+        >
+          Filtres
+          {activeCount > 0 && (
+            <span
+              style={{
+                fontFamily: FONT.mono,
+                fontSize: 11,
+                fontWeight: 700,
+                background: C.prune,
+                color: '#fff',
+                borderRadius: 999,
+                minWidth: 18,
+                height: 18,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 5px',
+              }}
+            >
+              {activeCount}
+            </span>
+          )}
+        </button>
+        {activeCount > 0 && (
+          <button
+            onClick={() => {
+              setDateKey('all')
+              setLevel('all')
+              setOnlyAvail(false)
+              setMaxDist(null)
+              setVerifiedOnly(false)
+            }}
+            style={{ background: 'none', border: 'none', color: C.muted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Réinitialiser
+          </button>
+        )}
+      </div>
+
+      {/* expandable filter panel */}
+      {panelOpen && (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.line}`,
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}
+        >
+          <FilterGroup label="QUAND">
+            {DATE_DEFS.map((d) => (
+              <Pill key={d.k} on={dateKey === d.k} onClick={() => setDateKey(d.k)}>
+                {d.l}
+              </Pill>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="NIVEAU">
+            {LEVEL_DEFS.map((lv) => (
+              <Pill key={lv} on={level === lv} onClick={() => setLevel(lv)}>
+                {lv === 'all' ? 'Tous' : lv}
+              </Pill>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="DISPONIBILITÉ">
+            <Pill on={onlyAvail} onClick={() => setOnlyAvail((v) => !v)}>
+              Places dispo
+            </Pill>
+          </FilterGroup>
+
+          <FilterGroup label="SÉCURITÉ">
+            <Pill on={verifiedOnly} onClick={() => setVerifiedOnly((v) => !v)}>
+              Profils vérifiés uniquement
+            </Pill>
+          </FilterGroup>
+
+          <FilterGroup label="DISTANCE">
+            {geoOn ? (
+              DIST_DEFS.map((d) => (
+                <Pill key={d.l} on={maxDist === d.km} onClick={() => setMaxDist(d.km)}>
+                  {d.l}
+                </Pill>
+              ))
+            ) : (
+              <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 500 }}>
+                Active « Près de moi » pour filtrer par distance.
+              </span>
+            )}
+          </FilterGroup>
+        </div>
+      )}
+
       {/* "ouvert à se revoir" banner */}
-      <div style={{ padding: '0 22px 6px' }}>
+      <div style={{ paddingBottom: 22 }}>
         <button
           onClick={() => go('revoir')}
           className="tu-press"
@@ -132,13 +264,13 @@ export default function Feed({ profile, go }: { profile: Profile; go: (s: Screen
             textAlign: 'left',
             display: 'flex',
             alignItems: 'center',
-            gap: 13,
+            gap: 16,
             background: 'linear-gradient(100deg,#5C2049,#7A2E62)',
             border: 'none',
-            borderRadius: 20,
-            padding: '15px 16px',
+            borderRadius: 22,
+            padding: '20px 22px',
             cursor: 'pointer',
-            boxShadow: '0 12px 26px -12px rgba(92,32,73,.7)',
+            boxShadow: '0 16px 34px -16px rgba(92,32,73,.7)',
           }}
         >
           <span
@@ -170,25 +302,133 @@ export default function Feed({ profile, go }: { profile: Profile; go: (s: Screen
       </div>
 
       {/* activity cards */}
-      <div style={{ padding: '14px 22px 26px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {shown.map((a) => (
-          <Card key={a.id} a={a} me={profile.id} busy={busyId === a.id} onJoin={() => join(a)} />
+      <div className="tu-feed-grid">
+        {shown.map(({ a, dist }) => (
+          <Card
+            key={a.id}
+            a={a}
+            dist={dist}
+            me={profile.id}
+            busy={busyId === a.id}
+            onJoin={() => join(a)}
+            onManage={() => go('manage', a.id)}
+          />
         ))}
-        {shown.length === 0 && (
-          <div style={{ textAlign: 'center', color: C.muted, fontSize: 13.5, padding: '20px 0' }}>
-            Aucune activité pour ce filtre. Crée la tienne en 30 secondes.
-          </div>
-        )}
       </div>
+      {shown.length === 0 && (
+        <div style={{ textAlign: 'center', color: C.muted, fontSize: 14, padding: '40px 0' }}>
+          Aucune activité pour ces filtres. Élargis ta recherche ou crée la tienne en 30 secondes.
+        </div>
+      )}
     </div>
   )
 }
 
-function Card({ a, me, busy, onJoin }: { a: Activity; me: string; busy: boolean; onJoin: () => void }) {
+function GeoButton({ geo, active }: { geo: ReturnType<typeof useGeo>; active: boolean }) {
+  if (geo.status === 'unsupported') return null
+  const label =
+    geo.status === 'locating'
+      ? 'Localisation…'
+      : geo.status === 'denied'
+        ? 'Réessayer la localisation'
+        : active
+          ? 'Autour de moi'
+          : 'Près de moi'
+  return (
+    <button
+      onClick={() => (active ? geo.clear() : geo.request())}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        padding: '9px 14px',
+        borderRadius: 999,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: 'pointer',
+        border: `1px solid ${active ? C.prune : C.line}`,
+        background: active ? C.prune : C.card,
+        color: active ? '#fff' : C.ink,
+        transition: 'all .15s',
+      }}
+    >
+      <Pin size={14} stroke={active ? '#fff' : C.prune} sw={1.9} />
+      {label}
+      {active && <span style={{ fontSize: 11, opacity: 0.85 }}>✓</span>}
+    </button>
+  )
+}
+
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontFamily: FONT.mono, fontSize: 10, letterSpacing: '1.2px', color: C.muted, fontWeight: 600, marginBottom: 9 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{children}</div>
+    </div>
+  )
+}
+
+function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '8px 14px',
+        borderRadius: 999,
+        fontSize: 13,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        border: `1px solid ${on ? C.prune : C.line}`,
+        background: on ? C.prune : C.paper,
+        color: on ? '#fff' : C.ink,
+        transition: 'all .15s',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function chip(on: boolean): React.CSSProperties {
+  return {
+    padding: '9px 15px',
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    border: `1px solid ${on ? C.prune : C.line}`,
+    background: on ? C.prune : C.card,
+    color: on ? '#fff' : C.ink,
+    transition: 'all .15s',
+  }
+}
+
+function Card({
+  a,
+  dist,
+  me,
+  busy,
+  onJoin,
+  onManage,
+}: {
+  a: Activity
+  dist: number | null
+  me: string
+  busy: boolean
+  onJoin: () => void
+  onManage: () => void
+}) {
   const left = slotsLeft(a)
   const soft = left <= 0 || a.mode === 'wait'
   const confirmed = a.participants.filter((p) => p.status === 'confirmed')
   const mine = a.participants.find((p) => p.profile_id === me)
+  const isOrganizer = a.organizer_id === me
+
+  const pending = a.participants.filter((p) => p.status === 'pending').length
 
   const cta = mine
     ? mine.status === 'confirmed'
@@ -266,6 +506,28 @@ function Card({ a, me, busy, onJoin }: { a: Activity; me: string; busy: boolean;
         >
           {placesLabel(a)}
         </div>
+        {dist != null && (
+          <div
+            style={{
+              position: 'absolute',
+              right: 13,
+              bottom: 11,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: 'rgba(255,255,255,.85)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: 999,
+              padding: '4px 9px',
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: C.prune,
+            }}
+          >
+            <Pin size={11} stroke={C.prune} sw={2} />
+            {formatDistance(dist)}
+          </div>
+        )}
         <div
           style={{
             position: 'absolute',
@@ -366,26 +628,65 @@ function Card({ a, me, busy, onJoin }: { a: Activity; me: string; busy: boolean;
           </div>
         </div>
 
-        <button
-          onClick={mine ? undefined : onJoin}
-          disabled={busy || !!mine}
-          className="tu-press"
-          style={{
-            marginTop: 15,
-            width: '100%',
-            padding: 13,
-            borderRadius: 13,
-            border: ctaSoft ? `1px solid ${C.line}` : 'none',
-            background: ctaSoft ? C.pruneSoft : C.prune,
-            color: ctaSoft ? C.prune : '#fff',
-            fontSize: 14.5,
-            fontWeight: 600,
-            cursor: mine ? 'default' : 'pointer',
-            opacity: busy ? 0.7 : 1,
-          }}
-        >
-          {busy ? '…' : cta}
-        </button>
+        {isOrganizer ? (
+          <button
+            onClick={onManage}
+            className="tu-press"
+            style={{
+              marginTop: 15,
+              width: '100%',
+              padding: 13,
+              borderRadius: 13,
+              border: 'none',
+              background: C.prune,
+              color: '#fff',
+              fontSize: 14.5,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            Gérer l'activité
+            {pending > 0 && (
+              <span
+                style={{
+                  fontFamily: FONT.mono,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: 'rgba(255,255,255,.22)',
+                  borderRadius: 999,
+                  padding: '1px 8px',
+                }}
+              >
+                {pending} en attente
+              </span>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={mine ? undefined : onJoin}
+            disabled={busy || !!mine}
+            className="tu-press"
+            style={{
+              marginTop: 15,
+              width: '100%',
+              padding: 13,
+              borderRadius: 13,
+              border: ctaSoft ? `1px solid ${C.line}` : 'none',
+              background: ctaSoft ? C.pruneSoft : C.prune,
+              color: ctaSoft ? C.prune : '#fff',
+              fontSize: 14.5,
+              fontWeight: 600,
+              cursor: mine ? 'default' : 'pointer',
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {busy ? '…' : cta}
+          </button>
+        )}
       </div>
     </div>
   )

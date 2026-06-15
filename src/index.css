@@ -8,11 +8,11 @@
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
-  background: #d9d6cd;
+  background: #f4f2ec;
   font-family: 'Hanken Grotesk', -apple-system, sans-serif;
   color: #1c1815;
 }
@@ -51,17 +51,77 @@ input {
   }
 }
 
-/* On phones, let the frame fill the viewport (real mobile web app);
-   on larger screens keep the framed mockup from the design. */
-@media (max-width: 480px) {
-  .tu-stage {
-    padding: 0 !important;
-    background: #f4f2ec !important;
+/* ── Laptop-first layout ────────────────────────────────────────── */
+
+/* centered page column for every screen */
+.tu-main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 36px 24px 96px;
+}
+
+/* responsive card grid (Feed, Revoir) — laptop shows 3, then degrades */
+.tu-feed-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .tu-feed-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tu-frame {
-    width: 100vw !important;
-    height: 100dvh !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
+}
+@media (max-width: 680px) {
+  .tu-feed-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* two-up grid for the "se revoir" co-player cards */
+.tu-pair-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .tu-pair-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* profile dashboard: fixed identity rail + flexible content */
+.tu-profile-grid {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .tu-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* login split: brand panel + form */
+.tu-login {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  min-height: 100dvh;
+}
+@media (max-width: 860px) {
+  .tu-login {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tu-login-brand {
+    display: none !important;
+  }
+}
+
+/* collapse the centered nav links on narrow windows */
+@media (max-width: 620px) {
+  .tu-nav-links {
+    display: none !important;
   }
 }
