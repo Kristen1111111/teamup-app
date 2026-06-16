@@ -40,6 +40,27 @@ export function placesLabel(a: Activity): string {
   return left > 1 ? `${left} places` : `${left} place`
 }
 
+// Live shortfall headline, always derived from the real slot count so it can
+// never contradict the "Complet" / "X places" badge (both come from slotsLeft).
+export function shortfallLabel(a: Activity): string {
+  const left = slotsLeft(a)
+  if (left <= 0) return 'Complet'
+  return `Il manque ${left} joueur${left > 1 ? 's' : ''}`
+}
+
+// Count-style asks ("Il manque 2 joueurs", "1 place côté pivot", "Complet…")
+// bake a player count into free text that goes stale the moment someone joins.
+const COUNT_ASK_RE = /il manque|\bplaces?\b|\bjoueurs?\b|complet/i
+
+// Headline shown on cards and the manage view. For count-style (or empty) asks
+// we render the live shortfall instead of the frozen text; genuinely
+// descriptive pitches ("Sortie 8 km · allure 5'30") are kept as-is.
+export function activityHeadline(a: Activity): string {
+  const ask = (a.ask ?? '').trim()
+  if (!ask || COUNT_ASK_RE.test(ask)) return shortfallLabel(a)
+  return ask
+}
+
 export type Coords = { lat: number; lng: number }
 
 // Great-circle distance in km between two points (Haversine).

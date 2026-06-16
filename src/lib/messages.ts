@@ -2,6 +2,22 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import type { ConversationSummary, Message } from './types'
 
+const WDAYS = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.']
+
+// Absolute clock for message bubbles inside a thread: a real "14:05" (with a
+// day prefix once it's no longer today) instead of an ever-vaguer "2 min".
+export function msgClock(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return time
+  const y = new Date(now)
+  y.setDate(now.getDate() - 1)
+  if (d.toDateString() === y.toDateString()) return `Hier ${time}`
+  if (now.getTime() - d.getTime() < 7 * 24 * 3600 * 1000) return `${WDAYS[d.getDay()]} ${time}`
+  return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ${time}`
+}
+
 // ── relative time, shared with the messaging UI ─────────────────────
 export function msgTime(iso: string): string {
   const d = new Date(iso)

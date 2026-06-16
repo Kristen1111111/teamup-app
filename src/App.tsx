@@ -21,6 +21,8 @@ import EditProfile from './screens/EditProfile'
 import Messages from './screens/Messages'
 import Settings from './screens/Settings'
 import Moderation from './screens/Moderation'
+import Legal from './screens/Legal'
+import DevSwitcher from './components/DevSwitcher'
 
 export type ScreenName =
   | 'feed'
@@ -38,7 +40,12 @@ export type Go = (s: ScreenName, id?: string) => void
 
 // DEV-only design QA: open ?preview=feed|create|profile|revoir to render a
 // screen with the seeded demo profile, bypassing the magic-link step.
-function usePreviewProfile(): { active: boolean; start: ScreenName; profile: ProfileT | null } {
+function usePreviewProfile(): {
+  active: boolean
+  start: ScreenName
+  profile: ProfileT | null
+  setProfile: (p: ProfileT | null) => void
+} {
   const params = new URLSearchParams(window.location.search)
   const start = (import.meta.env.DEV ? params.get('preview') : null) as ScreenName | null
   const [profile, setProfile] = useState<ProfileT | null>(null)
@@ -51,7 +58,7 @@ function usePreviewProfile(): { active: boolean; start: ScreenName; profile: Pro
       .single()
       .then(({ data }) => setProfile(data as ProfileT))
   }, [start])
-  return { active: !!start, start: start ?? 'feed', profile }
+  return { active: !!start, start: start ?? 'feed', profile, setProfile }
 }
 
 export default function App() {
@@ -59,7 +66,9 @@ export default function App() {
   const { session, profile: realProfile, loading, refreshProfile, setProfile: setRealProfile } = useSession()
   const preview = usePreviewProfile()
   const profile = preview.active ? preview.profile : realProfile
-  const setProfile = setRealProfile
+  // In preview mode, route updates to the preview profile so optimistic UI
+  // (toggles, prefs) actually re-renders; otherwise drive the real session.
+  const setProfile = preview.active ? preview.setProfile : setRealProfile
   const [screen, setScreen] = useState<ScreenName>(preview.active ? preview.start : 'feed')
   const [manageId, setManageId] = useState<string | null>(null)
   const [onboardingDone, setOnboardingDone] = useState(false)
@@ -90,8 +99,19 @@ export default function App() {
     return <PublicActivity id={route.id} session={session} profile={realProfile} sessionLoading={loading} />
   }
 
+  // Static legal pages (/cgu, /confidentialite) — no account required.
+  if (route.name === 'legal') {
+    return <Legal doc={route.doc} />
+  }
+
   if (loading && !preview.active) return <Splash />
-  if (!preview.active && (!session || !profile)) return <Login />
+  if (!preview.active && (!session || !profile))
+    return (
+      <>
+        <Login />
+        {import.meta.env.DEV && <DevSwitcher />}
+      </>
+    )
   if (!profile) return <Splash />
 
   // Short onboarding gate for new accounts (preview it via ?preview=onboarding).
@@ -99,14 +119,17 @@ export default function App() {
     import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === 'onboarding'
   if (!onboardingDone && ((!preview.active && !profile.onboarded) || previewOnboarding)) {
     return (
-      <Onboarding
-        profile={profile}
-        setProfile={setProfile}
-        onDone={() => {
-          setOnboardingDone(true)
-          setScreen('feed')
-        }}
-      />
+      <>
+        <Onboarding
+          profile={profile}
+          setProfile={setProfile}
+          onDone={() => {
+            setOnboardingDone(true)
+            setScreen('feed')
+          }}
+        />
+        {import.meta.env.DEV && <DevSwitcher profileName={profile.first_name} />}
+      </>
     )
   }
 
@@ -139,6 +162,7 @@ export default function App() {
         {screen === 'settings' && <Settings profile={profile} setProfile={setProfile} go={go} />}
         {screen === 'moderation' && <Moderation profile={profile} go={go} />}
       </main>
+      {import.meta.env.DEV && <DevSwitcher profileName={profile.first_name} />}
     </div>
   )
 }

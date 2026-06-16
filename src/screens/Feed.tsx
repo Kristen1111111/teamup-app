@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { C, FONT, MODE_LABEL } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Activity, Profile, Sport } from '../lib/types'
-import { formatSlot, placesLabel, slotsLeft, activityDistanceKm, formatDistance } from '../lib/format'
+import { formatSlot, placesLabel, slotsLeft, activityDistanceKm, formatDistance, activityHeadline } from '../lib/format'
 import { Pin, Clock, ChevronRight, Heart, VerifiedDot } from '../components/icons'
 import { ACTIVITY_SELECT } from '../lib/queries'
+import { venueInCity } from '../lib/cities'
+import { navigate } from '../lib/router'
 import { useGeo } from '../lib/useGeo'
 import type { Go } from '../App'
 
@@ -78,6 +80,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
     const rows = activities
       .map((a) => ({ a, dist: activityDistanceKm(a, geoOn ? geo.coords : null) }))
       .filter(({ a, dist }) => {
+        if (!venueInCity(a.venue_name, profile.city)) return false // centre le feed sur la zone choisie
         if (blocked.has(a.organizer_id)) return false // F10 — masque les profils bloqués
         if (verifiedOnly && !a.organizer.verified) return false // F10 — vérifiés uniquement
         if (sport !== 'all' && a.sport_key !== sport) return false
@@ -95,9 +98,14 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
         : +new Date(x.a.starts_at) - +new Date(y.a.starts_at),
     )
     return rows
-  }, [activities, sport, dateKey, level, onlyAvail, maxDist, verifiedOnly, blocked, geoOn, geo.coords])
+  }, [activities, sport, dateKey, level, onlyAvail, maxDist, verifiedOnly, blocked, geoOn, geo.coords, profile.city])
+
+  // Only activities with a free place are actually "looking for players" — a full
+  // one is still listed (waitlist stays open) but must not inflate the headline.
+  const seekingCount = useMemo(() => shown.filter(({ a }) => slotsLeft(a) > 0).length, [shown])
 
   async function join(a: Activity) {
+    if (new Date(a.starts_at).getTime() <= Date.now()) return // a started match no longer takes inscriptions
     setBusyId(a.id)
     const status = slotsLeft(a) <= 0 || a.mode === 'wait' ? 'waitlist' : a.mode === 'direct' ? 'confirmed' : 'pending'
     await supabase.from('activity_participants').insert({ activity_id: a.id, profile_id: profile.id, status })
@@ -121,8 +129,12 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
           Près de toi, ce soir
         </h1>
         <p style={{ marginTop: 8, fontSize: 15, color: C.muted, fontWeight: 500 }}>
-          {shown.length} activité{shown.length > 1 ? 's' : ''} cherche{shown.length > 1 ? 'nt' : ''} encore des joueurs
-          {geoOn && ' · triées par distance'}
+          {seekingCount > 0
+            ? `${seekingCount} activité${seekingCount > 1 ? 's' : ''} cherche${seekingCount > 1 ? 'nt' : ''} encore des joueurs`
+            : shown.length > 0
+              ? `${shown.length} activité${shown.length > 1 ? 's' : ''} près de toi · liste d'attente ouverte`
+              : 'Aucune activité pour le moment'}
+          {geoOn && shown.length > 0 && ' · triées par distance'}
         </p>
       </div>
 
@@ -456,12 +468,22 @@ function Card({
 
   return (
     <div
+      onClick={() => navigate(`/a/${a.id}`)}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          navigate(`/a/${a.id}`)
+        }
+      }}
       style={{
         background: C.card,
         borderRadius: 24,
         border: `1px solid ${C.line}`,
         overflow: 'hidden',
         boxShadow: '0 2px 10px -4px rgba(40,28,34,.08)',
+        cursor: 'pointer',
       }}
     >
       {/* striped tinted header */}
@@ -545,7 +567,7 @@ function Card({
 
       <div style={{ padding: '16px 17px 17px' }}>
         <h3 style={{ fontFamily: FONT.serif, fontSize: 22, fontWeight: 500, lineHeight: 1.12, letterSpacing: '-.01em' }}>
-          {a.ask}
+          {activityHeadline(a)}
         </h3>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -630,7 +652,10 @@ function Card({
 
         {isOrganizer ? (
           <button
-            onClick={onManage}
+            onClick={(e) => {
+              e.stopPropagation()
+              onManage()
+            }}
             className="tu-press"
             style={{
               marginTop: 15,
@@ -667,7 +692,14 @@ function Card({
           </button>
         ) : (
           <button
-            onClick={mine ? undefined : onJoin}
+            onClick={
+              mine
+                ? (e) => e.stopPropagation()
+                : (e) => {
+                    e.stopPropagation()
+                    onJoin()
+                  }
+            }
             disabled={busy || !!mine}
             className="tu-press"
             style={{

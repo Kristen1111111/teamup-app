@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
+import { venuesForCity } from '../lib/cities'
 import type { Profile, Sport } from '../lib/types'
 import { Close, Timer, Pin, Lock, Minus, Plus, Chevron } from '../components/icons'
 import type { Go } from '../App'
@@ -54,7 +55,19 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   const [cPlaces, setCPlaces] = useState(2)
   const [cPoste, setCPoste] = useState('any')
   const [cMode, setCMode] = useState('approve')
+  const [cVenue, setCVenue] = useState(0)
+  const [venueOpen, setVenueOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Venues are scoped to the player's home zone, so a Marseille user creates a
+  // Marseille activity (which then shows up in the Marseille feed).
+  const venues = venuesForCity(profile.city)
+  const venue = venues[cVenue] ?? venues[0]
+  // Resolve the concrete start so we can warn before publishing a slot that's
+  // already in the past (e.g. "Ce soir 19:30" created at 20:45) — such a match
+  // would land straight in "Passées" and never surface in the feed.
+  const start = startDate(cWhen, cTime)
+  const startInPast = start.getTime() <= Date.now()
 
   useEffect(() => {
     supabase
@@ -65,20 +78,24 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   }, [])
 
   async function publish() {
+    if (startInPast) {
+      setError('Ce créneau est déjà passé. Choisis une heure à venir.')
+      return
+    }
     setBusy(true)
-    const start = startDate(cWhen, cTime)
+    setError(null)
     const end = new Date(start.getTime() + 90 * 60 * 1000)
     const level = LEVELS.find((l) => l.k === cLevel)!.full
     const poste = cPoste === 'any' ? null : POSTES.find((p) => p.k === cPoste)!.l
-    const { data, error } = await supabase
+    const { data, error: insertError } = await supabase
       .from('activities')
       .insert({
         organizer_id: profile.id,
         sport_key: cSport,
         ask: `Il manque ${cPlaces} joueur${cPlaces > 1 ? 's' : ''}`,
-        venue_name: 'City Stade Léon · Paris 11e',
-        venue_code: 'CITY STADE LÉON',
-        exact_address: '12 rue Léon, 75011 Paris',
+        venue_name: venue.name,
+        venue_code: venue.code,
+        exact_address: venue.address,
         starts_at: start.toISOString(),
         ends_at: end.toISOString(),
         level,
@@ -89,9 +106,13 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
       .select('id')
       .single()
     setBusy(false)
+    if (insertError || !data) {
+      // Surface the failure instead of navigating away as if it succeeded.
+      setError("La publication a échoué. Vérifie ta connexion et réessaie.")
+      return
+    }
     // Land on the management view — that's where the shareable link lives.
-    if (!error && data) go('manage', (data as { id: string }).id)
-    else go('feed')
+    go('manage', (data as { id: string }).id)
   }
 
   return (
@@ -203,12 +224,33 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
               </button>
             </div>
           </div>
+          {startInPast && (
+            <div
+              style={{
+                marginTop: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 13px',
+                borderRadius: 12,
+                background: '#FBF1E6',
+                border: '1px solid #E7C9A0',
+                color: '#8A5A1E',
+                fontSize: 12.5,
+                fontWeight: 600,
+              }}
+            >
+              Ce créneau est déjà passé — choisis « Demain » ou une heure plus tardive.
+            </div>
+          )}
         </Section>
 
         {/* where */}
         <Section title="Où ?">
           <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
             <button
+              onClick={() => setVenueOpen((v) => !v)}
+              aria-expanded={venueOpen}
               style={{
                 width: '100%',
                 display: 'flex',
@@ -223,10 +265,47 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14.5, fontWeight: 600 }}>
                 <Pin size={16} stroke={C.prune} sw={1.8} />
-                City Stade Léon · Paris 11e
+                {venue.name}
               </span>
-              <Chevron size={12} stroke={C.muted} />
+              <span style={{ display: 'inline-flex', transform: venueOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>
+                <Chevron size={12} stroke={C.muted} />
+              </span>
             </button>
+            {venueOpen && (
+              <div style={{ borderTop: `1px solid ${C.line}` }}>
+                {venues.map((v, i) => {
+                  const on = i === cVenue
+                  return (
+                    <button
+                      key={v.code}
+                      onClick={() => {
+                        setCVenue(i)
+                        setVenueOpen(false)
+                      }}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 9,
+                        padding: '11px 16px',
+                        background: on ? C.pruneSoft : 'none',
+                        border: 'none',
+                        borderBottom: i < venues.length - 1 ? `1px solid ${C.line}` : 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        color: on ? C.prune : C.ink,
+                      }}
+                    >
+                      <Pin size={15} stroke={on ? C.prune : C.muted} sw={1.8} />
+                      <span style={{ flex: 1 }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{v.name}</span>
+                        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>{v.address}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <div
               style={{
                 display: 'flex',
@@ -241,7 +320,11 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
               }}
             >
               <Lock />
-              L'adresse exacte n'est partagée qu'après acceptation
+              {cMode === 'direct'
+                ? "L'adresse exacte s'affiche dès qu'un joueur rejoint"
+                : cMode === 'wait'
+                  ? "L'adresse exacte est partagée une fois la place confirmée"
+                  : "L'adresse exacte n'est partagée qu'après acceptation"}
             </div>
           </div>
         </Section>
@@ -374,9 +457,26 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
           borderRadius: 20,
         }}
       >
+        {error && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 12,
+              padding: '11px 14px',
+              borderRadius: 12,
+              background: '#FBECEC',
+              border: '1px solid #E7B8B8',
+              color: '#8A2A2A',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
         <button
           onClick={publish}
-          disabled={busy}
+          disabled={busy || startInPast}
           className="tu-press"
           style={{
             width: '100%',
@@ -387,8 +487,8 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
             color: '#fff',
             fontSize: 15,
             fontWeight: 600,
-            cursor: busy ? 'default' : 'pointer',
-            opacity: busy ? 0.7 : 1,
+            cursor: busy || startInPast ? 'default' : 'pointer',
+            opacity: busy || startInPast ? 0.7 : 1,
           }}
         >
           {busy ? 'Publication…' : 'Publier et obtenir le lien'}

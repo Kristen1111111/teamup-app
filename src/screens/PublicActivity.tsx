@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { C, FONT, MODE_LABEL } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Activity, Profile } from '../lib/types'
-import { formatSlot, placesLabel, slotsLeft, confirmedCount } from '../lib/format'
+import { activityHeadline, formatSlot, placesLabel, slotsLeft, confirmedCount } from '../lib/format'
 import { useActivity } from '../lib/useActivity'
 import { navigate } from '../lib/router'
 import ShareBar from '../components/ShareBar'
@@ -63,14 +63,20 @@ export default function PublicActivity({
 
   const left = slotsLeft(activity)
   const soft = left <= 0 || activity.mode === 'wait'
+  // Once the slot has started, the match no longer accepts inscriptions — the DB
+  // enforces this too (participants_insert RLS), this is the matching UI guard.
+  const isPast = new Date(activity.starts_at).getTime() <= Date.now()
 
   async function join() {
-    if (!activity || !me) return
+    if (!activity || !me || isPast) return
     setBusy(true)
     const status = soft ? 'waitlist' : activity.mode === 'direct' ? 'confirmed' : 'pending'
-    await supabase.from('activity_participants').insert({ activity_id: activity.id, profile_id: me, status })
+    const { error } = await supabase
+      .from('activity_participants')
+      .insert({ activity_id: activity.id, profile_id: me, status })
     await reload()
     setBusy(false)
+    if (error) return // RLS guard (e.g. the match just started) — UI already reflects it after reload
   }
 
   return (
@@ -155,7 +161,7 @@ export default function PublicActivity({
 
         <div style={{ padding: '20px 22px 24px' }}>
           <h1 style={{ fontFamily: FONT.serif, fontSize: 27, fontWeight: 500, lineHeight: 1.12, letterSpacing: '-.01em' }}>
-            {activity.ask}
+            {activityHeadline(activity)}
           </h1>
 
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -213,7 +219,7 @@ export default function PublicActivity({
             }}
           >
             {accepted ? <Check size={14} stroke={C.green} /> : <Lock size={14} stroke={C.prune} />}
-            {accepted ? address ?? 'Adresse exacte disponible' : "L'adresse exacte est communiquée après acceptation"}
+            {accepted ? address ?? 'Adresse exacte disponible' : maskedAddressCopy(activity.mode)}
           </div>
 
           <div style={{ height: 1, background: C.line, margin: '18px 0' }} />
@@ -254,6 +260,7 @@ export default function PublicActivity({
               sessionLoading={sessionLoading}
               hasSession={!!session}
               isOrganizer={isOrganizer}
+              isPast={isPast}
               mine={mine?.status ?? null}
               soft={soft}
               mode={activity.mode}
@@ -285,6 +292,7 @@ function Cta({
   sessionLoading,
   hasSession,
   isOrganizer,
+  isPast,
   mine,
   soft,
   mode,
@@ -296,6 +304,7 @@ function Cta({
   sessionLoading: boolean
   hasSession: boolean
   isOrganizer: boolean
+  isPast: boolean
   mine: string | null
   soft: boolean
   mode: Activity['mode']
@@ -310,6 +319,10 @@ function Cta({
     return (
       <Primary onClick={onManage}>Gérer l'activité</Primary>
     )
+
+  // A finished match no longer takes inscriptions — show the state to everyone
+  // (your own status still wins below, so a confirmed player keeps their badge).
+  if (isPast && !mine) return <Soft>Cette activité est terminée</Soft>
 
   if (mine) {
     const label =
@@ -452,6 +465,17 @@ function LinkBtn({ children, onClick }: { children: React.ReactNode; onClick: ()
       {children}
     </button>
   )
+}
+
+// Address-masking copy, matched to the join model so the message never
+// contradicts when the address actually unlocks:
+//  - direct  → revealed as soon as you join (no validation step)
+//  - approve → revealed once the organizer accepts you
+//  - wait    → revealed once a freed place confirms you
+function maskedAddressCopy(mode: Activity['mode']): string {
+  if (mode === 'direct') return "L'adresse exacte s'affiche dès que tu rejoins"
+  if (mode === 'wait') return "L'adresse exacte est communiquée une fois ta place confirmée"
+  return "L'adresse exacte est communiquée après acceptation"
 }
 
 function Row({ icon, text }: { icon: React.ReactNode; text: string }) {

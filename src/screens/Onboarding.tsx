@@ -221,7 +221,7 @@ export default function Onboarding({
               <span style={{ fontSize: 13.5, color: C.ink, fontWeight: 500, lineHeight: 1.5 }}>
                 J'ai lu et j'accepte les{' '}
                 <a
-                  href="https://teamup.app/cgu"
+                  href="/cgu"
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
@@ -231,7 +231,7 @@ export default function Onboarding({
                 </a>{' '}
                 et la{' '}
                 <a
-                  href="https://teamup.app/confidentialite"
+                  href="/confidentialite"
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}

@@ -9,13 +9,16 @@ export function useSession() {
   const [loading, setLoading] = useState(true)
 
   async function loadProfile(authId: string) {
-    // Bootstrap demo content on first login, then read the profile back.
-    await supabase.rpc('bootstrap_demo')
-    // Bloc 2: seed "Mes activités" demo data + (re)generate due reminders.
-    await supabase.rpc('bootstrap_bloc2')
-    await supabase.rpc('generate_reminders')
-    // Bloc 4: seed messagerie + file de modération (idempotent).
-    await supabase.rpc('bootstrap_bloc4')
+    // Demo seeding is OFF in production: a real signup must start with an empty
+    // account. It is opt-in via VITE_DEMO_SEED=true (see .env.example) so the
+    // demo profile (réputation, activités, messages, file de modération fictifs)
+    // can still be filled on a dedicated demo deployment.
+    if (import.meta.env.VITE_DEMO_SEED === 'true') {
+      await supabase.rpc('bootstrap_demo')
+      await supabase.rpc('bootstrap_bloc2')
+      await supabase.rpc('generate_reminders')
+      await supabase.rpc('bootstrap_bloc4')
+    }
     const { data } = await supabase.from('profiles').select('*').eq('auth_id', authId).single()
     setProfile((data as Profile) ?? null)
   }

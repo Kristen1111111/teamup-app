@@ -27,6 +27,7 @@ export default function EditProfile({
   const [isPublic, setIsPublic] = useState(profile.is_public)
   const [hidden, setHidden] = useState(profile.hidden_from_search)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -56,12 +57,15 @@ export default function EditProfile({
   async function save() {
     if (!fname) return
     setBusy(true)
+    setError(null)
 
-    await supabase.from('profile_sports').delete().eq('profile_id', profile.id)
-    if (sportKeys.length) {
-      await supabase
+    const del = await supabase.from('profile_sports').delete().eq('profile_id', profile.id)
+    let insErr = null
+    if (!del.error && sportKeys.length) {
+      const ins = await supabase
         .from('profile_sports')
         .insert(sportKeys.map((key) => ({ profile_id: profile.id, sport_key: key, level: picked[key] })))
+      insErr = ins.error
     }
 
     const patch = {
@@ -72,10 +76,16 @@ export default function EditProfile({
       is_public: isPublic,
       hidden_from_search: hidden,
     }
-    await supabase.from('profiles').update(patch).eq('id', profile.id)
+    const upd = await supabase.from('profiles').update(patch).eq('id', profile.id)
+
+    setBusy(false)
+    if (del.error || insErr || upd.error) {
+      // Don't pretend it saved — keep the user on the form with their edits.
+      setError("L'enregistrement a échoué. Vérifie ta connexion et réessaie.")
+      return
+    }
 
     setProfile({ ...profile, ...patch })
-    setBusy(false)
     go('profile')
   }
 
@@ -100,7 +110,7 @@ export default function EditProfile({
                 value={lastInitial}
                 onChange={(e) => setLastInitial(e.target.value)}
                 maxLength={1}
-                placeholder="B."
+                placeholder={fname ? `${fname[0].toUpperCase()}.` : 'Ex. K.'}
                 style={inputStyle}
               />
             </Field>
@@ -182,6 +192,22 @@ export default function EditProfile({
           </div>
         </Card>
 
+        {error && (
+          <div
+            role="alert"
+            style={{
+              padding: '11px 14px',
+              borderRadius: 12,
+              background: '#FBECEC',
+              border: '1px solid #E7B8B8',
+              color: '#8A2A2A',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
         <button onClick={save} disabled={!fname || busy} className="tu-press" style={{
           width: '100%',
           padding: 15,

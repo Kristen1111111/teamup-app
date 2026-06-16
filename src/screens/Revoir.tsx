@@ -24,6 +24,7 @@ export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
   const [coplayers, setCoplayers] = useState<Coplayer[]>([])
   const [mine, setMine] = useState<Set<string>>(new Set())
   const [incoming, setIncoming] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
 
   async function load() {
     // most recent past activity I took part in
@@ -94,22 +95,34 @@ export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
   async function toggle(coId: string, k: Kind) {
     if (!activityId) return
     const kk = key(coId, k)
+    const had = mine.has(kk)
+    // Optimistic update — reverted below if the write fails.
     const next = new Set(mine)
-    if (next.has(kk)) {
-      next.delete(kk)
-      setMine(next)
-      await supabase
-        .from('meet_intents')
-        .delete()
-        .eq('from_profile', profile.id)
-        .eq('to_profile', coId)
-        .eq('kind', k)
-    } else {
-      next.add(kk)
-      setMine(next)
-      await supabase
-        .from('meet_intents')
-        .insert({ activity_id: activityId, from_profile: profile.id, to_profile: coId, kind: k })
+    if (had) next.delete(kk)
+    else next.add(kk)
+    setMine(next)
+    setError(null)
+
+    const { error: writeError } = had
+      ? await supabase
+          .from('meet_intents')
+          .delete()
+          .eq('from_profile', profile.id)
+          .eq('to_profile', coId)
+          .eq('kind', k)
+      : await supabase
+          .from('meet_intents')
+          .insert({ activity_id: activityId, from_profile: profile.id, to_profile: coId, kind: k })
+
+    if (writeError) {
+      // Roll back the optimistic toggle and tell the user it didn't stick.
+      setMine((cur) => {
+        const back = new Set(cur)
+        if (had) back.add(kk)
+        else back.delete(kk)
+        return back
+      })
+      setError("Ton choix n'a pas pu être enregistré. Réessaie.")
     }
   }
 
@@ -263,6 +276,26 @@ export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
           )}
         </div>
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            margin: '16px auto 0',
+            maxWidth: 460,
+            padding: '11px 14px',
+            borderRadius: 12,
+            background: '#FBECEC',
+            border: '1px solid #E7B8B8',
+            color: '#8A2A2A',
+            fontSize: 13,
+            fontWeight: 600,
+            textAlign: 'center',
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
         <button

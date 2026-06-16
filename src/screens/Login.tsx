@@ -192,7 +192,15 @@ export default function Login() {
           )}
 
           <p style={{ marginTop: 28, fontSize: 11.5, color: C.faint, fontWeight: 500, lineHeight: 1.5 }}>
-            En continuant, tu acceptes les CGU et la politique de confidentialité.
+            En continuant, tu acceptes les{' '}
+            <a href="/cgu" target="_blank" rel="noreferrer" style={{ color: C.prune, fontWeight: 600 }}>
+              CGU
+            </a>{' '}
+            et la{' '}
+            <a href="/confidentialite" target="_blank" rel="noreferrer" style={{ color: C.prune, fontWeight: 600 }}>
+              politique de confidentialité
+            </a>
+            .
           </p>
         </div>
       </div>

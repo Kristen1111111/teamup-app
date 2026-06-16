@@ -23,7 +23,15 @@ export default function Profile({
 }) {
   const [playing, setPlaying] = useState<PlayingRow[]>([])
   const [history, setHistory] = useState<HistoryRow[]>([])
+  // Sports inferred from past matches — used as a fallback for "Ce que je joue"
+  // so the section never reads "Ajoute tes sports favoris" while a played match
+  // sits right below in the history.
+  const [historySports, setHistorySports] = useState<PlayingRow[]>([])
+  // Whether this player organises at least one activity — drives the role label
+  // (no more hardcoded "Organisateur" for accounts that have never created one).
+  const [organizes, setOrganizes] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [shareErr, setShareErr] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -33,29 +41,62 @@ export default function Profile({
       .eq('profile_id', profile.id)
       .then(({ data }) => setPlaying((data as unknown as PlayingRow[]) ?? []))
 
-    supabase
-      .from('activity_participants')
-      .select('checked_in, status, activity:activities(starts_at, venue_name, sport:sports(label))')
-      .eq('profile_id', profile.id)
-      .then(({ data }) => {
-        const rows = ((data as unknown as Array<{
-          checked_in: boolean | null
-          activity: { starts_at: string; venue_name: string; sport: { label: string } } | null
-        }>) ?? [])
-          .filter((r) => r.activity && new Date(r.activity.starts_at) < new Date())
-          .sort((a, b) => +new Date(b.activity!.starts_at) - +new Date(a.activity!.starts_at))
-          .slice(0, 4)
-          .map((r) => {
-            const d = new Date(r.activity!.starts_at)
-            const venue = r.activity!.venue_name.split(' · ')[0]
-            return {
-              sport: r.activity!.sport.label,
-              meta: `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${venue}`,
-              present: r.checked_in !== false,
-            }
-          })
-        setHistory(rows)
-      })
+    // History = past matches I played in OR organised, merged & de-duplicated, so
+    // an organiser's own sessions show up in their profile (not just players').
+    type PastMatch = { id: string; starts_at: string; venue_name: string; sport: Sport; present: boolean; organized: boolean }
+    Promise.all([
+      supabase
+        .from('activity_participants')
+        .select('checked_in, activity:activities(id, starts_at, venue_name, sport:sports(*))')
+        .eq('profile_id', profile.id),
+      supabase
+        .from('activities')
+        .select('id, starts_at, venue_name, sport:sports(*)')
+        .eq('organizer_id', profile.id),
+    ]).then(([{ data: parts }, { data: org }]) => {
+      const now = new Date()
+      const byId = new Map<string, PastMatch>()
+
+      for (const r of (parts as unknown as Array<{
+        checked_in: boolean | null
+        activity: { id: string; starts_at: string; venue_name: string; sport: Sport } | null
+      }>) ?? []) {
+        const a = r.activity
+        if (!a || new Date(a.starts_at) >= now) continue
+        byId.set(a.id, { ...a, present: r.checked_in !== false, organized: false })
+      }
+
+      for (const a of (org as unknown as Array<{ id: string; starts_at: string; venue_name: string; sport: Sport }>) ?? []) {
+        if (new Date(a.starts_at) >= now) continue
+        if (!byId.has(a.id)) byId.set(a.id, { ...a, present: true, organized: true })
+      }
+
+      setOrganizes(((org as unknown[]) ?? []).length > 0)
+
+      const past = Array.from(byId.values()).sort((x, y) => +new Date(y.starts_at) - +new Date(x.starts_at))
+
+      setHistory(
+        past.slice(0, 4).map((m) => {
+          const d = new Date(m.starts_at)
+          const venue = m.venue_name.split(' · ')[0]
+          return {
+            sport: m.sport.label,
+            meta: `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${venue}${m.organized ? ' · organisé' : ''}`,
+            present: m.present,
+          }
+        }),
+      )
+
+      // distinct sports played, newest first — pseudo "playing" rows (no level)
+      const seen = new Set<string>()
+      const derived: PlayingRow[] = []
+      for (const m of past) {
+        if (seen.has(m.sport.key)) continue
+        seen.add(m.sport.key)
+        derived.push({ level: '', sport: m.sport })
+      }
+      setHistorySports(derived)
+    })
   }, [profile.id])
 
   async function toggleOpen() {
@@ -71,24 +112,37 @@ export default function Profile({
       text: 'Mon profil joueur sur TeamUp',
       url,
     }
-    try {
-      if (navigator.share) {
+    // Try the native share sheet first; if it's unavailable (desktop) or fails,
+    // fall back to copying the link so the user always gets visible feedback.
+    if (navigator.share) {
+      try {
         await navigator.share(data)
         return
+      } catch {
+        // sheet dismissed or share failed — fall through to clipboard copy
       }
-    } catch {
-      return // share sheet dismissed by the user
     }
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      setCopied(false)
+      setShareErr(true)
+      setTimeout(() => setShareErr(false), 2500)
     }
   }
 
-  const badges = [profile.verified ? 'Vérifié' : null, 'Ponctuel', 'Capitaine'].filter(Boolean) as string[]
+  // Prefer the sports the player declared; otherwise infer from their history.
+  const sportsToShow = playing.length ? playing : historySports
+  // Badges earned from real signals, not a fixed list shown identically to everyone:
+  //  - Vérifié  → identity verified
+  //  - Ponctuel → reliable attendance (≥ 90%) with no late cancels
+  //  - Capitaine→ actually organises activities
+  const badges = [
+    profile.verified ? 'Vérifié' : null,
+    profile.attendance_pct >= 90 && profile.late_cancels === 0 ? 'Ponctuel' : null,
+    organizes ? 'Capitaine' : null,
+  ].filter(Boolean) as string[]
   const circumference = 2 * Math.PI * 37
   const dash = (profile.attendance_pct / 100) * circumference
 
@@ -114,6 +168,22 @@ export default function Profile({
             >
               <Check size={12} stroke={C.green} sw={3} />
               Lien copié
+            </span>
+          )}
+          {shareErr && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: '#A53F3F',
+                background: '#F2E6E6',
+                borderRadius: 999,
+                padding: '7px 12px',
+              }}
+            >
+              Copie impossible — copie le lien manuellement
             </span>
           )}
           <button style={iconBtn} onClick={share} title="Partager mon profil">
@@ -237,7 +307,7 @@ export default function Profile({
           {profile.first_name} {profile.last_initial}
         </h1>
         <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, marginTop: 2 }}>
-          Organisateur · {profile.city} · Actif aujourd'hui
+          {organizes ? 'Organisateur' : 'Joueur'} · {profile.city} · Actif aujourd'hui
         </p>
       </div>
 
@@ -308,7 +378,7 @@ export default function Profile({
           {/* what I play */}
           <Card label="CE QUE JE JOUE" labelColor={C.prune}>
         <div style={{ marginTop: 13, display: 'flex', flexDirection: 'column', gap: 13 }}>
-          {playing.map((s) => (
+          {sportsToShow.map((s) => (
             <div key={s.sport.key} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
               <span
                 style={{
@@ -325,12 +395,14 @@ export default function Profile({
                 {s.sport.code}
               </span>
               <span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{s.sport.label}</span>
-              <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 500, color: C.muted }}>
-                {s.level.toUpperCase()}
-              </span>
+              {s.level && (
+                <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 500, color: C.muted }}>
+                  {s.level.toUpperCase()}
+                </span>
+              )}
             </div>
           ))}
-          {playing.length === 0 && <span style={{ fontSize: 13, color: C.muted }}>Ajoute tes sports favoris.</span>}
+          {sportsToShow.length === 0 && <span style={{ fontSize: 13, color: C.muted }}>Ajoute tes sports favoris.</span>}
         </div>
       </Card>
 
@@ -384,7 +456,9 @@ export default function Profile({
             </div>
           ))}
           {history.length === 0 && (
-            <div style={{ padding: '16px 18px', fontSize: 13, color: C.muted }}>Pas encore de match joué.</div>
+            <div style={{ padding: '16px 18px', fontSize: 13, color: C.muted }}>
+              {profile.matches_played > 0 ? 'Aucun match récent à afficher.' : 'Pas encore de match joué.'}
+            </div>
           )}
         </div>
       </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Attendance, Participant, Profile } from '../lib/types'
-import { confirmedCount, formatSlot, slotsLeft } from '../lib/format'
+import { activityHeadline, confirmedCount, formatSlot, slotsLeft } from '../lib/format'
 import { useActivity } from '../lib/useActivity'
 import ShareBar from '../components/ShareBar'
 import { ChevronLeft, Pin, Clock, Check, Close, Users, VerifiedDot } from '../components/icons'
@@ -113,7 +113,7 @@ export default function Manage({ id, profile, go }: { id: string; profile: Profi
           </span>
           <span style={{ fontSize: 13.5, fontWeight: 700 }}>{activity.sport.label}</span>
         </div>
-        <h1 style={{ fontFamily: FONT.serif, fontSize: 24, fontWeight: 500, lineHeight: 1.12, marginTop: 11 }}>{activity.ask}</h1>
+        <h1 style={{ fontFamily: FONT.serif, fontSize: 24, fontWeight: 500, lineHeight: 1.12, marginTop: 11 }}>{activityHeadline(activity)}</h1>
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7 }}>
           <Meta icon={<Pin />} text={activity.venue_name} />
           <Meta icon={<Clock />} text={formatSlot(activity)} />
@@ -140,8 +140,10 @@ export default function Manage({ id, profile, go }: { id: string; profile: Profi
           </div>
           <div style={{ flex: 1, fontSize: 13, color: C.muted, fontWeight: 500 }}>
             <strong style={{ color: C.ink }}>{confirmedCount(activity)}</strong> / {activity.total_slots} confirmés ·{' '}
-            <span style={{ color: C.green, fontWeight: 600 }}>live</span>
-            <span style={{ display: 'block', fontSize: 11.5, color: C.faint }}>Compteur mis à jour en temps réel</span>
+            <span style={{ color: isPast ? C.muted : C.green, fontWeight: 600 }}>{isPast ? 'terminé' : 'live'}</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: C.faint }}>
+              {isPast ? 'Match terminé — enregistre les présences' : 'Compteur mis à jour en temps réel'}
+            </span>
           </div>
         </div>
 

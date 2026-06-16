@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { ConversationSummary, Message, Profile } from '../lib/types'
-import { loadConversations, msgTime } from '../lib/messages'
+import { loadConversations, msgTime, msgClock } from '../lib/messages'
 import { ChevronLeft, Dots, Send, Flag, Ban, Message as MessageIcon, VerifiedDot, Check } from '../components/icons'
 
 const REPORT_REASONS = [
@@ -394,7 +394,7 @@ function Thread({
                     color: mine ? 'rgba(255,255,255,.65)' : C.faint,
                   }}
                 >
-                  {msgTime(m.created_at)}
+                  {msgClock(m.created_at)}
                 </div>
               </div>
             </div>

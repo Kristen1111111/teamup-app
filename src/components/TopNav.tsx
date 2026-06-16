@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { Pin, Chevron, Plus, Check, Bell, Message } from './icons'
 import type { ScreenName } from '../App'
 import type { Profile } from '../lib/types'
+import { CITIES } from '../lib/cities'
 
 const LINKS: { k: ScreenName; l: string }[] = [
   { k: 'feed', l: 'Activités' },
@@ -11,8 +12,6 @@ const LINKS: { k: ScreenName; l: string }[] = [
   { k: 'revoir', l: 'Se revoir' },
   { k: 'profile', l: 'Profil' },
 ]
-
-const CITIES = ['Paris 11e', 'Paris 18e', 'Lyon', 'Marseille', 'Bordeaux', 'Toulouse', 'Lille', 'Nantes']
 
 export default function TopNav({
   screen,

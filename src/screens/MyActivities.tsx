@@ -3,7 +3,7 @@ import { C, FONT, MODE_LABEL } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import { ACTIVITY_SELECT } from '../lib/queries'
 import type { Activity, Profile } from '../lib/types'
-import { formatSlot, placesLabel, confirmedCount } from '../lib/format'
+import { activityHeadline, formatSlot, placesLabel, confirmedCount } from '../lib/format'
 import { Pin, Clock, Check, Close, Repeat, Calendar } from '../components/icons'
 import type { ScreenName } from '../App'
 
@@ -233,7 +233,7 @@ function Row({
           {a.sport.code}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{ fontFamily: FONT.serif, fontSize: 20, fontWeight: 500, lineHeight: 1.15 }}>{a.ask}</h3>
+          <h3 style={{ fontFamily: FONT.serif, fontSize: 20, fontWeight: 500, lineHeight: 1.15 }}>{activityHeadline(a)}</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 7 }}>
             <Meta icon={<Clock />} text={formatSlot(a)} />
             <Meta icon={<Pin />} text={a.venue_name} />
