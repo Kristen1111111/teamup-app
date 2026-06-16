@@ -1,3 +1,4 @@
+// Composant racine de l'app TeamUp : gère session, routing et navigation.
 import { useEffect, useState } from 'react'
 import { C, FONT } from './lib/tokens'
 import { supabase } from './lib/supabase'
