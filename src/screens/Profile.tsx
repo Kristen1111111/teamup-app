@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
-import type { Profile as ProfileT, Sport } from '../lib/types'
+import type { Profile as ProfileT, ProfilePhoto, Sport } from '../lib/types'
 import { Check, Share, Dots, Heart } from '../components/icons'
+import Avatar from '../components/Avatar'
+import PhotoGallery, { validatePhoto } from '../components/PhotoGallery'
+import { listGalleryPhotos, addGalleryPhoto, deleteGalleryPhoto } from '../lib/photos'
 import type { ScreenName } from '../App'
 
 type PlayingRow = { level: string; sport: Sport }
@@ -33,6 +36,11 @@ export default function Profile({
   const [copied, setCopied] = useState(false)
   const [shareErr, setShareErr] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Gallery (MES PHOTOS)
+  const [photos, setPhotos] = useState<ProfilePhoto[]>([])
+  const [photosLoading, setPhotosLoading] = useState(true)
+  const [photosBusy, setPhotosBusy] = useState(false)
+  const [photosError, setPhotosError] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -98,6 +106,57 @@ export default function Profile({
       setHistorySports(derived)
     })
   }, [profile.id])
+
+  useEffect(() => {
+    let active = true
+    setPhotosLoading(true)
+    listGalleryPhotos(profile.id)
+      .then((rows) => {
+        if (active) setPhotos(rows)
+      })
+      .catch(() => {
+        if (active) setPhotosError('Le chargement de tes photos a échoué.')
+      })
+      .finally(() => {
+        if (active) setPhotosLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [profile.id])
+
+  async function addPhotos(files: File[]) {
+    setPhotosError(null)
+    setPhotosBusy(true)
+    try {
+      for (const file of files) {
+        const invalid = validatePhoto(file)
+        if (invalid) {
+          setPhotosError(invalid)
+          continue
+        }
+        await addGalleryPhoto(profile.id, file)
+      }
+      const rows = await listGalleryPhotos(profile.id)
+      setPhotos(rows)
+    } catch (err) {
+      setPhotosError(err instanceof Error ? err.message : "L'ajout de la photo a échoué.")
+    } finally {
+      setPhotosBusy(false)
+    }
+  }
+
+  async function removePhoto(photo: ProfilePhoto) {
+    setPhotosError(null)
+    const prev = photos
+    setPhotos((cur) => cur.filter((p) => p.id !== photo.id))
+    try {
+      await deleteGalleryPhoto(photo)
+    } catch (err) {
+      setPhotos(prev) // rollback
+      setPhotosError(err instanceof Error ? err.message : 'La suppression a échoué.')
+    }
+  }
 
   async function toggleOpen() {
     const next = !profile.open_to_meet
@@ -266,43 +325,13 @@ export default function Profile({
               padding: 24,
             }}
           >
-        <div style={{ position: 'relative', width: 88, height: 88 }}>
-          <div
-            style={{
-              width: 88,
-              height: 88,
-              borderRadius: '50%',
-              background: 'linear-gradient(150deg,#5C2049,#8A3A6F)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: FONT.serif,
-              fontSize: 36,
-            }}
-          >
-            {profile.first_name[0]}
-          </div>
-          {profile.verified && (
-            <span
-              style={{
-                position: 'absolute',
-                right: 0,
-                bottom: 2,
-                width: 26,
-                height: 26,
-                borderRadius: '50%',
-                background: C.prune,
-                border: `3px solid ${C.paper}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Check size={13} />
-            </span>
-          )}
-        </div>
+        <Avatar
+          url={profile.avatar_url}
+          color="linear-gradient(150deg,#5C2049,#8A3A6F)"
+          letter={profile.first_name[0]}
+          size={88}
+          verified={profile.verified}
+        />
         <h1 style={{ fontFamily: FONT.serif, fontSize: 27, fontWeight: 500, marginTop: 12 }}>
           {profile.first_name} {profile.last_initial}
         </h1>
@@ -462,6 +491,35 @@ export default function Profile({
           )}
         </div>
       </div>
+
+          {/* my photos (gallery) */}
+          <Card label="MES PHOTOS" labelColor={C.prune}>
+            <PhotoGallery
+              photos={photos}
+              loading={photosLoading}
+              editable
+              busy={photosBusy}
+              onAdd={addPhotos}
+              onDelete={removePhoto}
+            />
+            {photosError && (
+              <div
+                role="alert"
+                style={{
+                  marginTop: 12,
+                  padding: '10px 13px',
+                  borderRadius: 12,
+                  background: '#FBECEC',
+                  border: '1px solid #E7B8B8',
+                  color: '#8A2A2A',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                }}
+              >
+                {photosError}
+              </div>
+            )}
+          </Card>
 
           {/* open to meet toggle */}
           <div

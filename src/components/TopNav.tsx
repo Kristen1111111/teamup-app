@@ -6,6 +6,7 @@ import type { ScreenName } from '../App'
 import type { Profile } from '../lib/types'
 import LocationPicker from './LocationPicker'
 import type { Place } from '../lib/geocode'
+import Avatar from './Avatar'
 
 const LINKS: { k: ScreenName; l: string }[] = [
   { k: 'feed', l: 'Activités' },
@@ -260,21 +261,22 @@ export default function TopNav({
           title="Mon profil"
           style={{
             flex: 'none',
-            width: 38,
-            height: 38,
+            padding: 0,
             borderRadius: '50%',
-            background: 'linear-gradient(150deg,#5C2049,#8A3A6F)',
-            color: '#fff',
+            background: 'transparent',
             border: screen === 'profile' ? `2px solid ${C.prune}` : '2px solid transparent',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: 15,
             cursor: 'pointer',
           }}
         >
-          {profile.first_name[0]}
+          <Avatar
+            url={profile.avatar_url}
+            color="linear-gradient(150deg,#5C2049,#8A3A6F)"
+            letter={profile.first_name[0]}
+            size={38}
+          />
         </button>
       </div>
     </header>

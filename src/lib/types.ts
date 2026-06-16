@@ -20,6 +20,7 @@ export type Profile = {
   home_lat: number | null
   home_lng: number | null
   avatar_color: string
+  avatar_url: string | null
   verified: boolean
   open_to_meet: boolean
   perfect_match: string | null
@@ -56,7 +57,7 @@ export type Participant = {
   attendance: Attendance | null
   profile: Pick<
     Profile,
-    'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'verified' | 'attendance_pct' | 'matches_played' | 'late_cancels'
+    'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'avatar_url' | 'verified' | 'attendance_pct' | 'matches_played' | 'late_cancels'
   >
 }
 
@@ -111,11 +112,21 @@ export type ConversationSummary = {
   subtitle: string
   avatarColor: string
   avatarLetter: string
+  avatarUrl: string | null
   lastBody: string | null
   lastAt: string | null
   unread: number
   // members other than me (for the thread header + report/block targets)
-  others: Pick<Profile, 'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'verified'>[]
+  others: Pick<Profile, 'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'avatar_url' | 'verified'>[]
+}
+
+export type ProfilePhoto = {
+  id: string
+  profile_id: string
+  storage_path: string
+  sort_order: number
+  created_at: string
+  url?: string
 }
 
 export type ReportStatus = 'open' | 'reviewing' | 'resolved' | 'dismissed'

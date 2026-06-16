@@ -50,14 +50,14 @@ function startDate(when: string, minutes: number): Date {
 
 export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   const [sports, setSports] = useState<Sport[]>([])
-  const [cSport, setCSport] = useState('foot')
+  const [cSport, setCSport] = useState('')
   const [cWhen, setCWhen] = useState('soir')
   const [cTime, setCTime] = useState(1170) // 19:30
   const [cLevel, setCLevel] = useState('inter')
   const [cPlaces, setCPlaces] = useState(2)
   const [cPoste, setCPoste] = useState('any')
   const [cMode, setCMode] = useState('approve')
-  const [cVenue, setCVenue] = useState(0)
+  const [cVenue, setCVenue] = useState(-1)
   const [venueOpen, setVenueOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,13 +73,18 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   const [geoBusy, setGeoBusy] = useState(false)
   const usingCustom = customMode || !hasCatalogue
   const customIncomplete = usingCustom && (!vName.trim() || !vAddr.trim())
+  // Catalogue mode: nothing is pre-selected (cVenue starts at -1), so the player
+  // must explicitly pick a venue. Don't let `?? venues[0]` mask that absence.
+  const catalogueVenue = cVenue >= 0 ? venues[cVenue] : null
+  const venueMissing = !usingCustom && !catalogueVenue
+  // A real (or empty placeholder) venue object for rendering the INSERT payload.
   const venue = usingCustom
     ? {
         code: vName.trim().toUpperCase().slice(0, 28) || 'LIEU',
         name: vName.trim(),
         address: vAddr.trim(),
       }
-    : venues[cVenue] ?? venues[0]
+    : catalogueVenue ?? { code: '', name: '', address: '' }
 
   // Geocode the typed address (OpenStreetMap) so the activity gets real coords —
   // that's what places it on the distance-based feed. Debounced as the user types.
@@ -117,12 +122,20 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   }, [])
 
   async function publish() {
-    if (startInPast) {
-      setError('Ce créneau est déjà passé. Choisis une heure à venir.')
+    if (!cSport) {
+      setError('Choisis un sport.')
+      return
+    }
+    if (venueMissing) {
+      setError('Choisis un lieu.')
       return
     }
     if (customIncomplete) {
       setError('Indique le nom du lieu et son adresse.')
+      return
+    }
+    if (startInPast) {
+      setError('Ce créneau est déjà passé. Choisis une heure à venir.')
       return
     }
     setBusy(true)
@@ -305,12 +318,14 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
                   value={vName}
                   onChange={(e) => setVName(e.target.value)}
                   placeholder="Nom du lieu (ex. Gymnase Jean Macé)"
+                  maxLength={80}
                   style={venueInput}
                 />
                 <input
                   value={vAddr}
                   onChange={(e) => setVAddr(e.target.value)}
                   placeholder="Adresse complète (ex. 5 rue du Sport, 67000 Strasbourg)"
+                  maxLength={120}
                   style={venueInput}
                 />
                 {geoBusy && (
@@ -348,9 +363,9 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
                     color: C.ink,
                   }}
                 >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14.5, fontWeight: 600 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14.5, fontWeight: 600, color: catalogueVenue ? C.ink : C.muted }}>
                     <Pin size={16} stroke={C.prune} sw={1.8} />
-                    {venue.name}
+                    {catalogueVenue ? catalogueVenue.name : 'Choisis un lieu'}
                   </span>
                   <span style={{ display: 'inline-flex', transform: venueOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>
                     <Chevron size={12} stroke={C.muted} />
@@ -585,7 +600,7 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
         )}
         <button
           onClick={publish}
-          disabled={busy || startInPast || customIncomplete}
+          disabled={busy || !cSport || venueMissing || customIncomplete || startInPast}
           className="tu-press"
           style={{
             width: '100%',
@@ -596,8 +611,8 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
             color: '#fff',
             fontSize: 15,
             fontWeight: 600,
-            cursor: busy || startInPast || customIncomplete ? 'default' : 'pointer',
-            opacity: busy || startInPast || customIncomplete ? 0.7 : 1,
+            cursor: busy || !cSport || venueMissing || customIncomplete || startInPast ? 'default' : 'pointer',
+            opacity: busy || !cSport || venueMissing || customIncomplete || startInPast ? 0.7 : 1,
           }}
         >
           {busy ? 'Publication…' : 'Publier et obtenir le lien'}

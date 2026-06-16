@@ -13,14 +13,20 @@ export function useActivity(id: string | null) {
   const reload = useCallback(async () => {
     if (!id) return
     const { data } = await supabase.from('activities').select(ACTIVITY_SELECT).eq('id', id).maybeSingle()
-    if (!data) setNotFound(true)
+    // Reset notFound on every reload: a transient null (e.g. a race after join())
+    // must not latch the view permanently onto "introuvable".
+    setNotFound(!data)
     // Embeds infer as any[] (no generated Database types) — cast through unknown.
     setActivity((data as unknown as Activity) ?? null)
     setLoading(false)
   }, [id])
 
   useEffect(() => {
-    if (!id) return
+    // No id → nothing to load; clear the spinner instead of leaving it stuck true.
+    if (!id) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setNotFound(false)
     reload()

@@ -19,6 +19,7 @@ import Notifications from './screens/Notifications'
 import PublicActivity from './screens/PublicActivity'
 import Onboarding from './screens/Onboarding'
 import EditProfile from './screens/EditProfile'
+import PlayerProfile from './screens/PlayerProfile'
 import Messages from './screens/Messages'
 import Settings from './screens/Settings'
 import Moderation from './screens/Moderation'
@@ -34,6 +35,7 @@ export type ScreenName =
   | 'activities'
   | 'notifications'
   | 'edit'
+  | 'player'
   | 'messages'
   | 'settings'
   | 'moderation'
@@ -54,10 +56,14 @@ function usePreviewProfile(): {
     if (!start) return
     supabase
       .from('profiles')
-      .select('*')
+      // Explicit public columns (home_lat/home_lng/auth_id SELECT is revoked on
+      // profiles for client roles, so `select('*')` would error). DEV preview only.
+      .select(
+        'id, first_name, last_initial, city, avatar_color, avatar_url, verified, open_to_meet, perfect_match, matches_played, attendance_pct, late_cancels, is_public, hidden_from_search, is_moderator, onboarded, created_at',
+      )
       .eq('id', '11111111-1111-1111-1111-111111111111')
       .single()
-      .then(({ data }) => setProfile(data as ProfileT))
+      .then(({ data }) => setProfile((data as unknown as ProfileT) ?? null))
   }, [start])
   return { active: !!start, start: start ?? 'feed', profile, setProfile }
 }
@@ -83,14 +89,23 @@ export default function App() {
     setScreen(s)
   }
 
-  // Deep link: /?manage=<id> opens the organizer view once the profile is ready
-  // (used when the organizer taps "Gérer" from the public page).
+  // Deep links resolved once the profile is ready:
+  //  - /?manage=<id>  → organizer view (from the public page "Gérer")
+  //  - /?profile=<id> → a shared player profile (from Profile "Partager")
   useEffect(() => {
     if (!profile) return
-    const mid = new URLSearchParams(window.location.search).get('manage')
+    const params = new URLSearchParams(window.location.search)
+    const mid = params.get('manage')
     if (mid) {
       setManageId(mid)
       setScreen('manage')
+      window.history.replaceState({}, '', '/')
+      return
+    }
+    const pid = params.get('profile')
+    if (pid) {
+      setManageId(pid)
+      setScreen('player')
       window.history.replaceState({}, '', '/')
     }
   }, [profile])
@@ -152,13 +167,14 @@ export default function App() {
         )}
         {screen === 'revoir' && <Revoir profile={profile} go={go} />}
         {screen === 'edit' && <EditProfile profile={profile} setProfile={setProfile} go={go} />}
+        {screen === 'player' && manageId && <PlayerProfile profileId={manageId} go={go} />}
         {screen === 'manage' && manageId && <Manage id={manageId} profile={profile} go={go} />}
         {screen === 'activities' && <MyActivities profile={profile} go={go} />}
         {screen === 'notifications' && (
           <Notifications profile={profile} setProfile={setProfile} go={go} onChange={refreshUnread} />
         )}
         {screen === 'messages' && (
-          <Messages profile={profile} initialThreadId={manageId} onChange={refreshMsgUnread} />
+          <Messages profile={profile} initialThreadId={manageId} onChange={refreshMsgUnread} go={go} />
         )}
         {screen === 'settings' && <Settings profile={profile} setProfile={setProfile} go={go} />}
         {screen === 'moderation' && <Moderation profile={profile} go={go} />}

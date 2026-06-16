@@ -5,14 +5,16 @@ import type { Attendance, Participant, Profile } from '../lib/types'
 import { activityHeadline, confirmedCount, formatSlot, slotsLeft } from '../lib/format'
 import { useActivity } from '../lib/useActivity'
 import ShareBar from '../components/ShareBar'
+import Avatar from '../components/Avatar'
 import { ChevronLeft, Pin, Clock, Check, Close, Users, VerifiedDot } from '../components/icons'
 import type { ScreenName } from '../App'
 
-type Regular = Pick<Profile, 'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'verified' | 'attendance_pct' | 'matches_played'>
+type Regular = Pick<Profile, 'id' | 'first_name' | 'last_initial' | 'avatar_color' | 'avatar_url' | 'verified' | 'attendance_pct' | 'matches_played'>
 
 export default function Manage({ id, profile, go }: { id: string; profile: Profile; go: (s: ScreenName) => void }) {
   const { activity, loading, notFound, reload } = useActivity(id)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [regulars, setRegulars] = useState<Regular[]>([])
 
   // Load the organizer's "regular players" — people they've played with before.
@@ -27,7 +29,7 @@ export default function Manage({ id, profile, go }: { id: string; profile: Profi
       }
       const { data } = await supabase
         .from('activity_participants')
-        .select('profile:profiles(id, first_name, last_initial, avatar_color, verified, attendance_pct, matches_played)')
+        .select('profile:profiles(id, first_name, last_initial, avatar_color, avatar_url, verified, attendance_pct, matches_played)')
         .in('activity_id', ids)
         .neq('profile_id', profile.id)
       const seen = new Set<string>()
@@ -66,7 +68,16 @@ export default function Manage({ id, profile, go }: { id: string; profile: Profi
 
   async function act(fn: () => PromiseLike<unknown>, key: string) {
     setBusyId(key)
-    await fn()
+    // Supabase write builders resolve to { error }. Surface failures (RLS,
+    // network) instead of reloading silently — otherwise the organizer believes
+    // an accept/refuse/invite succeeded when it didn't.
+    const res = (await fn()) as { error?: { message?: string } | null }
+    if (res?.error) {
+      setActionError('Action impossible. Vérifie ta connexion et réessaie.')
+      setBusyId(null)
+      return
+    }
+    setActionError(null)
     await reload()
     setBusyId(null)
   }
@@ -93,6 +104,26 @@ export default function Manage({ id, profile, go }: { id: string; profile: Profi
   return (
     <Wrap>
       <Back go={go} />
+
+      {actionError && (
+        <div
+          role="alert"
+          onClick={() => setActionError(null)}
+          style={{
+            background: '#F2E6E6',
+            color: '#A53F3F',
+            border: '1px solid #E2C9C9',
+            borderRadius: 12,
+            padding: '11px 14px',
+            fontSize: 13,
+            fontWeight: 600,
+            marginTop: 14,
+            cursor: 'pointer',
+          }}
+        >
+          {actionError}
+        </div>
+      )}
 
       {/* summary + share */}
       <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 20, marginTop: 16 }}>
@@ -285,23 +316,12 @@ function PlayerRow({ p, children }: { p: Participant; children: React.ReactNode 
         borderTop: `1px solid ${C.line}`,
       }}
     >
-      <div
-        style={{
-          flex: 'none',
-          width: 40,
-          height: 40,
-          borderRadius: '50%',
-          background: p.profile.avatar_color,
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontWeight: 700,
-          fontSize: 16,
-        }}
-      >
-        {p.profile.first_name[0]}
-      </div>
+      <Avatar
+        url={p.profile.avatar_url}
+        color={p.profile.avatar_color}
+        letter={p.profile.first_name[0]}
+        size={40}
+      />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14.5, fontWeight: 600 }}>
           {p.profile.first_name} {p.profile.last_initial}

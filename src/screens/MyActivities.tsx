@@ -5,6 +5,7 @@ import { ACTIVITY_SELECT } from '../lib/queries'
 import type { Activity, Profile } from '../lib/types'
 import { activityHeadline, formatSlot, placesLabel, confirmedCount } from '../lib/format'
 import { Pin, Clock, Check, Close, Repeat, Calendar } from '../components/icons'
+import Avatar from '../components/Avatar'
 import type { ScreenName } from '../App'
 
 type Tab = 'upcoming' | 'past'
@@ -39,8 +40,8 @@ export default function MyActivities({ profile, go }: { profile: Profile; go: (s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const now = Date.now()
   const shown = useMemo(() => {
+    const now = Date.now()
     const list = acts.filter((a) =>
       tab === 'upcoming' ? new Date(a.starts_at).getTime() >= now : new Date(a.starts_at).getTime() < now,
     )
@@ -49,7 +50,6 @@ export default function MyActivities({ profile, go }: { profile: Profile; go: (s
         ? +new Date(a.starts_at) - +new Date(b.starts_at)
         : +new Date(b.starts_at) - +new Date(a.starts_at),
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acts, tab])
 
   function toast(msg: string) {
@@ -274,7 +274,7 @@ function Row({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {pending.map((p) => (
               <div key={p.id ?? p.profile_id} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <Avatar color={p.profile.avatar_color} letter={p.profile.first_name[0]} />
+                <Avatar url={p.profile.avatar_url} color={p.profile.avatar_color} letter={p.profile.first_name[0]} size={38} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>
                     {p.profile.first_name} {p.profile.last_initial}
@@ -409,28 +409,6 @@ function Meta({ icon, text }: { icon: React.ReactNode; text: string }) {
       {icon}
       {text}
     </span>
-  )
-}
-
-function Avatar({ color, letter }: { color: string; letter: string }) {
-  return (
-    <div
-      style={{
-        flex: 'none',
-        width: 38,
-        height: 38,
-        borderRadius: '50%',
-        background: color,
-        color: '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 700,
-        fontSize: 15,
-      }}
-    >
-      {letter}
-    </div>
   )
 }
 

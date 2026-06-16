@@ -5,6 +5,7 @@ import type { Activity, Profile, Sport } from '../lib/types'
 import { formatSlot, placesLabel, slotsLeft, activityDistanceKm, formatDistance, activityHeadline } from '../lib/format'
 import { Pin, Clock, ChevronRight, Heart, VerifiedDot } from '../components/icons'
 import { ACTIVITY_SELECT } from '../lib/queries'
+import Avatar from '../components/Avatar'
 import { navigate } from '../lib/router'
 import { useGeo } from '../lib/useGeo'
 import type { Go } from '../App'
@@ -35,6 +36,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
   const [activities, setActivities] = useState<Activity[]>([])
   const [revoirCount, setRevoirCount] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [joinError, setJoinError] = useState<string | null>(null)
 
   // Filters (F8): sport (existing) + date / level / available slots / distance.
   const [sport, setSport] = useState('all')
@@ -117,7 +119,15 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
     if (new Date(a.starts_at).getTime() <= Date.now()) return // a started match no longer takes inscriptions
     setBusyId(a.id)
     const status = slotsLeft(a) <= 0 || a.mode === 'wait' ? 'waitlist' : a.mode === 'direct' ? 'confirmed' : 'pending'
-    await supabase.from('activity_participants').insert({ activity_id: a.id, profile_id: profile.id, status })
+    const { error } = await supabase.from('activity_participants').insert({ activity_id: a.id, profile_id: profile.id, status })
+    if (error) {
+      // Surface the failure instead of silently "succeeding": the CTA would
+      // otherwise reset and the player would think they joined.
+      setJoinError("Impossible de rejoindre cette activité. Réessaie dans un instant.")
+      setBusyId(null)
+      return
+    }
+    setJoinError(null)
     await load()
     setBusyId(null)
   }
@@ -132,6 +142,25 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
 
   return (
     <div>
+      {joinError && (
+        <div
+          role="alert"
+          onClick={() => setJoinError(null)}
+          style={{
+            background: '#F2E6E6',
+            color: '#A53F3F',
+            border: '1px solid #E2C9C9',
+            borderRadius: 12,
+            padding: '11px 14px',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 12,
+            cursor: 'pointer',
+          }}
+        >
+          {joinError}
+        </div>
+      )}
       {/* hero */}
       <div style={{ paddingBottom: 4 }}>
         <h1 style={{ fontFamily: FONT.serif, fontSize: 40, lineHeight: 1.06, fontWeight: 500, letterSpacing: '-.02em' }}>
@@ -333,6 +362,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
             busy={busyId === a.id}
             onJoin={() => join(a)}
             onManage={() => go('manage', a.id)}
+            onPlayer={(id) => go('player', id)}
           />
         ))}
       </div>
@@ -435,6 +465,7 @@ function Card({
   busy,
   onJoin,
   onManage,
+  onPlayer,
 }: {
   a: Activity
   dist: number | null
@@ -442,6 +473,7 @@ function Card({
   busy: boolean
   onJoin: () => void
   onManage: () => void
+  onPlayer: (profileId: string) => void
 }) {
   const left = slotsLeft(a)
   const soft = left <= 0 || a.mode === 'wait'
@@ -594,53 +626,71 @@ function Card({
         {/* organizer + avatars */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
-            style={{
-              flex: 'none',
-              width: 34,
-              height: 34,
-              borderRadius: '50%',
-              background: a.organizer.avatar_color,
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: 14,
+            role="link"
+            tabIndex={0}
+            title={`Voir le profil de ${a.organizer.first_name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onPlayer(a.organizer_id)
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                onPlayer(a.organizer_id)
+              }
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}
           >
-            {a.organizer.first_name[0]}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13.5, fontWeight: 600 }}>
-              {a.organizer.first_name} {a.organizer.last_initial}
-              {a.organizer.verified && <VerifiedDot />}
-            </div>
-            <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '.3px', color: C.green, fontWeight: 500 }}>
-              {a.organizer.attendance_pct}% présence · {a.organizer.matches_played} matchs
+            <Avatar
+              url={a.organizer.avatar_url}
+              color={a.organizer.avatar_color}
+              letter={a.organizer.first_name[0]}
+              size={34}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13.5, fontWeight: 600 }}>
+                {a.organizer.first_name} {a.organizer.last_initial}
+                {a.organizer.verified && <VerifiedDot />}
+              </div>
+              <div style={{ fontFamily: FONT.mono, fontSize: 10.5, letterSpacing: '.3px', color: C.green, fontWeight: 500 }}>
+                {a.organizer.attendance_pct}% présence · {a.organizer.matches_played} matchs
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             {confirmed.slice(0, 4).map((p, i) => (
               <div
                 key={p.profile_id}
+                role="link"
+                tabIndex={0}
+                title={`Voir le profil de ${p.profile.first_name}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onPlayer(p.profile_id)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onPlayer(p.profile_id)
+                  }
+                }}
                 style={{
-                  width: 31,
-                  height: 31,
                   borderRadius: '50%',
-                  background: p.profile.avatar_color,
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   border: '2px solid #fff',
                   marginLeft: i === 0 ? 0 : -9,
                   position: 'relative',
                   zIndex: 10 - i,
+                  cursor: 'pointer',
                 }}
               >
-                {p.profile.first_name[0]}
+                <Avatar
+                  url={p.profile.avatar_url}
+                  color={p.profile.avatar_color}
+                  letter={p.profile.first_name[0]}
+                  size={31}
+                />
               </div>
             ))}
             {Array.from({ length: Math.min(left, 3) }).map((_, i) => (

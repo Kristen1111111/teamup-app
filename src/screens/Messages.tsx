@@ -3,7 +3,9 @@ import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { ConversationSummary, Message, Profile } from '../lib/types'
 import { loadConversations, msgTime, msgClock } from '../lib/messages'
+import Avatar from '../components/Avatar'
 import { ChevronLeft, Dots, Send, Flag, Ban, Message as MessageIcon, VerifiedDot, Check } from '../components/icons'
+import type { Go } from '../App'
 
 const REPORT_REASONS = [
   'Comportement déplacé',
@@ -18,10 +20,12 @@ export default function Messages({
   profile,
   initialThreadId,
   onChange,
+  go,
 }: {
   profile: Profile
   initialThreadId: string | null
   onChange: () => void
+  go: Go
 }) {
   const [active, setActive] = useState<string | null>(initialThreadId ?? null)
 
@@ -35,6 +39,7 @@ export default function Messages({
           onChange()
         }}
         onChange={onChange}
+        go={go}
       />
     )
   }
@@ -101,23 +106,13 @@ function ConversationList({ profile, onOpen }: { profile: Profile; onOpen: (id: 
               cursor: 'pointer',
             }}
           >
-            <div
-              style={{
-                flex: 'none',
-                width: 46,
-                height: 46,
-                borderRadius: c.kind === 'activity' ? 13 : '50%',
-                background: c.avatarColor,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 18,
-              }}
-            >
-              {c.avatarLetter}
-            </div>
+            <Avatar
+              url={c.avatarUrl}
+              color={c.avatarColor}
+              letter={c.avatarLetter}
+              size={46}
+              radius={c.kind === 'activity' ? 13 : '50%'}
+            />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -183,11 +178,13 @@ function Thread({
   profile,
   onBack,
   onChange,
+  go,
 }: {
   conversationId: string
   profile: Profile
   onBack: () => void
   onChange: () => void
+  go: Go
 }) {
   const me = profile.id
   const [meta, setMeta] = useState<ConvMeta | null>(null)
@@ -254,13 +251,19 @@ function Thread({
   }
 
   useEffect(() => {
-    load().then(markRead)
+    // Guard against a fast thread switch: a load()/realtime event from the
+    // previous conversation must not mark-read or append into the new one.
+    let cancelled = false
+    load().then(() => {
+      if (!cancelled) markRead()
+    })
     const channel = supabase
       .channel(`thread:${conversationId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
         (payload) => {
+          if (cancelled) return
           const m = payload.new as Message
           setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
           if (m.sender_id !== me) markRead()
@@ -268,6 +271,7 @@ function Thread({
       )
       .subscribe()
     return () => {
+      cancelled = true
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -326,17 +330,33 @@ function Thread({
         <button onClick={onBack} style={iconBtn} title="Retour">
           <ChevronLeft />
         </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {meta?.title ?? '…'}
-            </span>
-            {meta?.other?.verified && <VerifiedDot />}
+        {meta?.kind === 'direct' && meta.other ? (
+          <button
+            type="button"
+            onClick={() => go('player', meta.other!.id)}
+            title={`Voir le profil de ${meta.other.first_name}`}
+            style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: C.ink }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {meta.title}
+              </span>
+              {meta.other.verified && <VerifiedDot />}
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>Message privé · voir le profil</div>
+          </button>
+        ) : (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {meta?.title ?? '…'}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>
+              {meta?.kind === 'activity' ? 'Conversation de groupe' : 'Message privé'}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>
-            {meta?.kind === 'activity' ? 'Conversation de groupe' : 'Message privé'}
-          </div>
-        </div>
+        )}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setMenuOpen((o) => !o)} style={iconBtn} title="Options">
             <Dots />
@@ -408,6 +428,7 @@ function Thread({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          maxLength={2000}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()

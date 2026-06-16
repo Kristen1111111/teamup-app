@@ -78,6 +78,46 @@ input {
   }
 }
 
+/* square photo grid (profile gallery) — responsive tiles, 1:1 aspect */
+.tu-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.tu-gallery-grid > * {
+  aspect-ratio: 1 / 1;
+}
+.tu-gallery-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* delete button reveals on hover (pointer devices); always visible on touch */
+.tu-gallery-del {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tu-gallery-grid > div:hover .tu-gallery-del,
+.tu-gallery-del:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .tu-gallery-del {
+    opacity: 1;
+  }
+}
+@media (max-width: 880px) {
+  .tu-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .tu-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* two-up grid for the "se revoir" co-player cards */
 .tu-pair-grid {
   display: grid;

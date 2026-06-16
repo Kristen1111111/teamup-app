@@ -3,9 +3,10 @@ import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../lib/types'
 import { ChevronLeft, Lock, Heart } from '../components/icons'
+import Avatar from '../components/Avatar'
 import type { Go } from '../App'
 
-type Coplayer = { id: string; name: string; initial: string; color: string; meta: string }
+type Coplayer = { id: string; name: string; initial: string; color: string; avatarUrl: string | null; meta: string }
 type Kind = 'rejouer' | 'ami' | 'plus'
 const KINDS: { k: Kind; l: string }[] = [
   { k: 'rejouer', l: 'Rejouer' },
@@ -53,19 +54,20 @@ export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
     const [{ data: cop }, { data: intents }] = await Promise.all([
       supabase
         .from('activity_participants')
-        .select('profile:profiles(id, first_name, last_initial, avatar_color, attendance_pct, matches_played)')
+        .select('profile:profiles(id, first_name, last_initial, avatar_color, avatar_url, attendance_pct, matches_played)')
         .eq('activity_id', match.id)
         .neq('profile_id', profile.id),
       supabase.from('meet_intents').select('from_profile, to_profile, kind').eq('activity_id', match.id),
     ])
 
     setCoplayers(
-      ((cop as unknown as Array<{ profile: { id: string; first_name: string; last_initial: string; avatar_color: string; attendance_pct: number; matches_played: number } }>) ?? []).map(
+      ((cop as unknown as Array<{ profile: { id: string; first_name: string; last_initial: string; avatar_color: string; avatar_url: string | null; attendance_pct: number; matches_played: number } }>) ?? []).map(
         (r) => ({
           id: r.profile.id,
           name: `${r.profile.first_name} ${r.profile.last_initial}`,
           initial: r.profile.first_name[0],
           color: r.profile.avatar_color,
+          avatarUrl: r.profile.avatar_url,
           meta: `${r.profile.attendance_pct}% présence · ${r.profile.matches_played} matchs`,
         }),
       ),
@@ -183,24 +185,20 @@ export default function Revoir({ profile, go }: { profile: Profile; go: Go }) {
                   transition: 'all .2s',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div
-                    style={{
-                      flex: 'none',
-                      width: 46,
-                      height: 46,
-                      borderRadius: '50%',
-                      background: c.color,
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      fontSize: 18,
-                    }}
-                  >
-                    {c.initial}
-                  </div>
+                <div
+                  role="link"
+                  tabIndex={0}
+                  title={`Voir le profil de ${c.name}`}
+                  onClick={() => go('player', c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      go('player', c.id)
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                >
+                  <Avatar url={c.avatarUrl} color={c.color} letter={c.initial} size={46} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 600 }}>{c.name}</div>
                     <div style={{ fontFamily: FONT.mono, fontSize: 10.5, color: C.green, fontWeight: 500, marginTop: 1 }}>{c.meta}</div>

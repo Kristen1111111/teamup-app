@@ -40,7 +40,7 @@ type ConvRow = {
   activity_id: string | null
   activity: { ask: string; venue_code: string; sport: { label: string; color: string; tint: string } | null } | null
 }
-type ProfRow = { id: string; first_name: string; last_initial: string; avatar_color: string; verified: boolean }
+type ProfRow = { id: string; first_name: string; last_initial: string; avatar_color: string; avatar_url: string | null; verified: boolean }
 type MsgRow = { conversation_id: string; sender_id: string | null; body: string; created_at: string }
 
 // Assemble every conversation I belong to, with last-message preview + unread
@@ -62,7 +62,7 @@ export async function loadConversations(me: string): Promise<ConversationSummary
       .in('id', ids),
     supabase
       .from('conversation_members')
-      .select('conversation_id, profile:profiles(id, first_name, last_initial, avatar_color, verified)')
+      .select('conversation_id, profile:profiles(id, first_name, last_initial, avatar_color, avatar_url, verified)')
       .in('conversation_id', ids),
     supabase
       .from('messages')
@@ -85,12 +85,15 @@ export async function loadConversations(me: string): Promise<ConversationSummary
     const convMsgs = ((msgs as MsgRow[]) ?? []).filter((m) => m.conversation_id === c.id)
     const last = convMsgs[0] ?? null
     const lr = lastRead.get(c.id)
-    const unread = convMsgs.filter((m) => m.sender_id !== me && (!lr || m.created_at > lr)).length
+    const unread = convMsgs.filter(
+      (m) => m.sender_id !== me && (!lr || new Date(m.created_at).getTime() > new Date(lr).getTime()),
+    ).length
 
     let title: string
     let subtitle: string
     let avatarColor: string
     let avatarLetter: string
+    let avatarUrl: string | null = null
     if (c.kind === 'activity') {
       title = c.activity?.sport?.label ? `${c.activity.sport.label} · groupe` : 'Activité'
       subtitle = c.activity?.venue_code ?? `${others.length + 1} participants`
@@ -102,6 +105,7 @@ export async function loadConversations(me: string): Promise<ConversationSummary
       subtitle = 'Message privé'
       avatarColor = o?.avatar_color ?? '#5C2049'
       avatarLetter = (o?.first_name ?? '?')[0]
+      avatarUrl = o?.avatar_url ?? null
     }
 
     return {
@@ -112,6 +116,7 @@ export async function loadConversations(me: string): Promise<ConversationSummary
       subtitle,
       avatarColor,
       avatarLetter,
+      avatarUrl,
       lastBody: last?.body ?? null,
       lastAt: last?.created_at ?? null,
       unread,
@@ -119,8 +124,11 @@ export async function loadConversations(me: string): Promise<ConversationSummary
     }
   })
 
-  // most recent activity first; empty threads sink to the bottom
-  return list.sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''))
+  // most recent activity first; empty threads (no lastAt → 0) sink to the bottom.
+  // Compare on epoch ms, not ISO strings: lexicographic order breaks across
+  // timezone suffixes (Z vs +00:00) and differing fractional-second precision.
+  const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : 0)
+  return list.sort((a, b) => ms(b.lastAt) - ms(a.lastAt))
 }
 
 export async function countUnreadMessages(me: string): Promise<number> {

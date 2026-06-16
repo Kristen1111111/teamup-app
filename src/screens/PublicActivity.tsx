@@ -7,6 +7,7 @@ import { activityHeadline, formatSlot, placesLabel, slotsLeft, confirmedCount } 
 import { useActivity } from '../lib/useActivity'
 import { navigate } from '../lib/router'
 import ShareBar from '../components/ShareBar'
+import Avatar from '../components/Avatar'
 import { Pin, Clock, Lock, Check, VerifiedDot } from '../components/icons'
 
 // Public, shareable activity page (/a/:id). Consultable without an account.
@@ -226,23 +227,12 @@ export default function PublicActivity({
 
           {/* organizer + reliability */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div
-              style={{
-                flex: 'none',
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: activity.organizer.avatar_color,
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 16,
-              }}
-            >
-              {activity.organizer.first_name[0]}
-            </div>
+            <Avatar
+              url={activity.organizer.avatar_url}
+              color={activity.organizer.avatar_color}
+              letter={activity.organizer.first_name[0]}
+              size={40}
+            />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 14.5, fontWeight: 600 }}>
                 {activity.organizer.first_name} {activity.organizer.last_initial}
