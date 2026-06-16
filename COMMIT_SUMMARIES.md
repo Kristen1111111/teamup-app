@@ -21,3 +21,13 @@ _par Kristen Boitier_
 _par Kristen Boitier_
 
 - (résumé indisponible — la CLI claude n'est pas authentifiée hors app desktop ; lancer une fois `claude` puis /login)
+
+## 2026-06-16 15:41 — `6156c9a` — docs: entrée changelog pour 81349de (session dev non persistée)
+_par Kristen Boitier_
+
+- (résumé indisponible — la CLI claude n'est pas authentifiée hors app desktop ; lancer une fois `claude` puis /login)
+
+## 2026-06-16 15:43 — `72b5268` — chore: ne persiste plus la session en prod non plus (toujours repartir sur l'écran de connexion)
+_par Kristen Boitier_
+
+- (résumé indisponible — la CLI claude n'est pas authentifiée hors app desktop ; lancer une fois `claude` puis /login)

@@ -167,7 +167,7 @@ export default function App() {
         )}
         {screen === 'revoir' && <Revoir profile={profile} go={go} />}
         {screen === 'edit' && <EditProfile profile={profile} setProfile={setProfile} go={go} />}
-        {screen === 'player' && manageId && <PlayerProfile profileId={manageId} go={go} />}
+        {screen === 'player' && manageId && <PlayerProfile profileId={manageId} meId={profile.id} go={go} />}
         {screen === 'manage' && manageId && <Manage id={manageId} profile={profile} go={go} />}
         {screen === 'activities' && <MyActivities profile={profile} go={go} />}
         {screen === 'notifications' && (

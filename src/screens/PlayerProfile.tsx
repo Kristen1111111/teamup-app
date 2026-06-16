@@ -13,12 +13,28 @@ type PlayingRow = { level: string; sport: Sport }
 // Read-only view of another player's profile (F? — photo + galerie). Mirrors the
 // visual sub-blocks of Profile.tsx (identity, reliability, sports, photos) but
 // with no editing affordances, no toggles, no upload.
-export default function PlayerProfile({ profileId, go }: { profileId: string; go: Go }) {
+export default function PlayerProfile({ profileId, meId, go }: { profileId: string; meId: string; go: Go }) {
   const [profile, setProfile] = useState<ProfileT | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [playing, setPlaying] = useState<PlayingRow[]>([])
   const [photos, setPhotos] = useState<ProfilePhoto[]>([])
   const [photosLoading, setPhotosLoading] = useState(true)
+  const [dmPending, setDmPending] = useState(false)
+  const [dmError, setDmError] = useState<string | null>(null)
+
+  // Ouvre (ou crée) le fil 1-à-1 avec ce joueur, sans condition de match
+  // préalable — le seul verrou serveur est le blocage mutuel.
+  async function message() {
+    setDmPending(true)
+    setDmError(null)
+    const { data, error } = await supabase.rpc('dm_conversation', { other: profileId })
+    setDmPending(false)
+    if (error || !data) {
+      setDmError("La conversation n'a pas pu être ouverte. Réessaie.")
+      return
+    }
+    go('messages', data as string)
+  }
 
   useEffect(() => {
     let active = true
@@ -120,6 +136,36 @@ export default function PlayerProfile({ profileId, go }: { profileId: string; go
             <p style={{ fontSize: 13, color: C.muted, fontWeight: 500, marginTop: 2 }}>
               Joueur · {profile.city}
             </p>
+
+            {profileId !== meId && (
+              <>
+                <button
+                  onClick={message}
+                  disabled={dmPending}
+                  className="tu-press"
+                  style={{
+                    marginTop: 16,
+                    width: '100%',
+                    padding: '11px 16px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: C.prune,
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: dmPending ? 'default' : 'pointer',
+                    opacity: dmPending ? 0.65 : 1,
+                  }}
+                >
+                  {dmPending ? 'Ouverture…' : `Message à ${profile.first_name}`}
+                </button>
+                {dmError && (
+                  <div role="alert" style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: '#8A2A2A' }}>
+                    {dmError}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* reliability / presence */}
