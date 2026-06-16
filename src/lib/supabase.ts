@@ -9,7 +9,11 @@ if (!url || !key) {
 
 export const supabase = createClient(url, key, {
   auth: {
-    persistSession: true,
+    // En dev, on NE retient PAS la session : à chaque ouverture/rechargement on
+    // repart de l'écran de connexion, comme un vrai utilisateur (pratique pour
+    // tester l'inscription et jongler entre plusieurs comptes). En prod, la
+    // session est mémorisée normalement (l'utilisateur reste connecté).
+    persistSession: !import.meta.env.DEV,
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },

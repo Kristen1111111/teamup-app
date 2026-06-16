@@ -27,8 +27,12 @@ export default function DevSwitcher({ profileName }: { profileName?: string }) {
       setErr(error.message)
       return
     }
-    // Full reload so useSession re-bootstraps cleanly as the new user.
-    window.location.assign('/')
+    // No full reload: with persistSession=false in dev, a reload would wipe the
+    // in-memory session. signInWithPassword fires onAuthStateChange, which makes
+    // useSession re-bootstrap as the new user in place.
+    setEmail(acc.email)
+    setBusy(null)
+    setOpen(false)
   }
 
   async function signOut() {
