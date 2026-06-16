@@ -16,3 +16,8 @@ _par Kristen Boitier_
 _par Kristen Boitier_
 
 - (résumé indisponible — la CLI claude n'est pas authentifiée hors app desktop ; lancer une fois `claude` puis /login)
+
+## 2026-06-16 15:39 — `81349de` — chore(dev): ne persiste pas la session en dev + switch de compte sans reload
+_par Kristen Boitier_
+
+- (résumé indisponible — la CLI claude n'est pas authentifiée hors app desktop ; lancer une fois `claude` puis /login)
