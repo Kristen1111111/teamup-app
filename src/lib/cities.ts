@@ -66,6 +66,13 @@ export function venuesForCity(city: string): Venue[] {
   return VENUES_BY_AREA[cityArea(city)] ?? VENUES_BY_AREA.Paris
 }
 
+// True when we ship a curated venue list for this zone. When false, the create
+// screen drops the catalogue and asks for a free-form venue + address instead,
+// so a player in any city can publish a real activity there.
+export function hasVenueCatalogue(city: string): boolean {
+  return !!VENUES_BY_AREA[cityArea(city)]
+}
+
 // The city label embedded in a venue name ("… · Paris 11e" → "Paris 11e").
 export function venueCity(venueName: string): string {
   const parts = venueName.split(' · ')

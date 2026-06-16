@@ -29,15 +29,18 @@ export default function TopNav({
   msgUnread?: number
 }) {
   const [cityOpen, setCityOpen] = useState(false)
+  const [typed, setTyped] = useState('')
 
   // de-duplicated list that always contains the current city
   const cities = Array.from(new Set([profile.city, ...CITIES]))
 
   async function pickCity(city: string) {
+    const next = city.trim()
     setCityOpen(false)
-    if (city === profile.city) return
-    setProfile({ ...profile, city }) // optimistic
-    await supabase.from('profiles').update({ city }).eq('id', profile.id)
+    setTyped('')
+    if (!next || next === profile.city) return
+    setProfile({ ...profile, city: next }) // optimistic
+    await supabase.from('profiles').update({ city: next }).eq('id', profile.id)
   }
 
   return (
@@ -223,6 +226,25 @@ export default function TopNav({
                 >
                   CHANGER DE VILLE
                 </div>
+                <input
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') pickCity(typed)
+                  }}
+                  placeholder="Autre ville… (Entrée)"
+                  style={{
+                    width: '100%',
+                    padding: '9px 10px',
+                    margin: '0 0 6px',
+                    borderRadius: 9,
+                    border: `1px solid ${C.line}`,
+                    background: C.paper,
+                    fontSize: 13.5,
+                    color: C.ink,
+                    outline: 'none',
+                  }}
+                />
                 {cities.map((c) => {
                   const on = c === profile.city
                   return (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
-import { venuesForCity } from '../lib/cities'
+import { venuesForCity, hasVenueCatalogue } from '../lib/cities'
 import type { Profile, Sport } from '../lib/types'
 import { Close, Timer, Pin, Lock, Minus, Plus, Chevron } from '../components/icons'
 import type { Go } from '../App'
@@ -62,7 +62,22 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   // Venues are scoped to the player's home zone, so a Marseille user creates a
   // Marseille activity (which then shows up in the Marseille feed).
   const venues = venuesForCity(profile.city)
-  const venue = venues[cVenue] ?? venues[0]
+  const hasCatalogue = hasVenueCatalogue(profile.city)
+  // Custom venue: any city without a curated list, or whenever the player opts in.
+  const [customMode, setCustomMode] = useState(!hasCatalogue)
+  const [vName, setVName] = useState('')
+  const [vAddr, setVAddr] = useState('')
+  const usingCustom = customMode || !hasCatalogue
+  const customIncomplete = usingCustom && (!vName.trim() || !vAddr.trim())
+  // The " · {city}" suffix is what the feed parses to scope an activity to a zone,
+  // so a free-form venue still surfaces in the creator's (and city's) feed.
+  const venue = usingCustom
+    ? {
+        code: vName.trim().toUpperCase().slice(0, 28) || profile.city.toUpperCase(),
+        name: `${vName.trim()} · ${profile.city}`,
+        address: vAddr.trim(),
+      }
+    : venues[cVenue] ?? venues[0]
   // Resolve the concrete start so we can warn before publishing a slot that's
   // already in the past (e.g. "Ce soir 19:30" created at 20:45) — such a match
   // would land straight in "Passées" and never surface in the feed.
@@ -80,6 +95,10 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   async function publish() {
     if (startInPast) {
       setError('Ce créneau est déjà passé. Choisis une heure à venir.')
+      return
+    }
+    if (customIncomplete) {
+      setError('Indique le nom du lieu et son adresse.')
       return
     }
     setBusy(true)
@@ -248,63 +267,86 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
         {/* where */}
         <Section title="Où ?">
           <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
-            <button
-              onClick={() => setVenueOpen((v) => !v)}
-              aria-expanded={venueOpen}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '13px 16px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: C.ink,
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14.5, fontWeight: 600 }}>
-                <Pin size={16} stroke={C.prune} sw={1.8} />
-                {venue.name}
-              </span>
-              <span style={{ display: 'inline-flex', transform: venueOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>
-                <Chevron size={12} stroke={C.muted} />
-              </span>
-            </button>
-            {venueOpen && (
-              <div style={{ borderTop: `1px solid ${C.line}` }}>
-                {venues.map((v, i) => {
-                  const on = i === cVenue
-                  return (
-                    <button
-                      key={v.code}
-                      onClick={() => {
-                        setCVenue(i)
-                        setVenueOpen(false)
-                      }}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 9,
-                        padding: '11px 16px',
-                        background: on ? C.pruneSoft : 'none',
-                        border: 'none',
-                        borderBottom: i < venues.length - 1 ? `1px solid ${C.line}` : 'none',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        color: on ? C.prune : C.ink,
-                      }}
-                    >
-                      <Pin size={15} stroke={on ? C.prune : C.muted} sw={1.8} />
-                      <span style={{ flex: 1 }}>
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{v.name}</span>
-                        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>{v.address}</span>
-                      </span>
-                    </button>
-                  )
-                })}
+            {usingCustom ? (
+              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input
+                  value={vName}
+                  onChange={(e) => setVName(e.target.value)}
+                  placeholder="Nom du lieu (ex. Gymnase Jean Macé)"
+                  style={venueInput}
+                />
+                <input
+                  value={vAddr}
+                  onChange={(e) => setVAddr(e.target.value)}
+                  placeholder="Adresse complète (ex. 5 rue du Sport, 67000 Strasbourg)"
+                  style={venueInput}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, fontWeight: 500 }}>
+                  <Pin size={13} stroke={C.prune} sw={1.8} />
+                  Zone : <strong style={{ color: C.ink }}>{profile.city}</strong> — ton activité apparaîtra dans le feed de cette ville.
+                </div>
               </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setVenueOpen((v) => !v)}
+                  aria-expanded={venueOpen}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '13px 16px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: C.ink,
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14.5, fontWeight: 600 }}>
+                    <Pin size={16} stroke={C.prune} sw={1.8} />
+                    {venue.name}
+                  </span>
+                  <span style={{ display: 'inline-flex', transform: venueOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>
+                    <Chevron size={12} stroke={C.muted} />
+                  </span>
+                </button>
+                {venueOpen && (
+                  <div style={{ borderTop: `1px solid ${C.line}` }}>
+                    {venues.map((v, i) => {
+                      const on = i === cVenue
+                      return (
+                        <button
+                          key={v.code}
+                          onClick={() => {
+                            setCVenue(i)
+                            setVenueOpen(false)
+                          }}
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 9,
+                            padding: '11px 16px',
+                            background: on ? C.pruneSoft : 'none',
+                            border: 'none',
+                            borderBottom: i < venues.length - 1 ? `1px solid ${C.line}` : 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            color: on ? C.prune : C.ink,
+                          }}
+                        >
+                          <Pin size={15} stroke={on ? C.prune : C.muted} sw={1.8} />
+                          <span style={{ flex: 1 }}>
+                            <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{v.name}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>{v.address}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
             <div
               style={{
@@ -327,6 +369,28 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
                   : "L'adresse exacte n'est partagée qu'après acceptation"}
             </div>
           </div>
+
+          {/* toggle between curated list and free-form venue */}
+          {hasCatalogue && (
+            <button
+              onClick={() => {
+                setCustomMode((m) => !m)
+                setVenueOpen(false)
+              }}
+              style={{
+                marginTop: 10,
+                background: 'none',
+                border: 'none',
+                color: C.prune,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              {customMode ? '← Choisir un lieu de la liste' : "Mon lieu n'est pas dans la liste →"}
+            </button>
+          )}
         </Section>
 
         {/* level (segmented) */}
@@ -476,7 +540,7 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
         )}
         <button
           onClick={publish}
-          disabled={busy || startInPast}
+          disabled={busy || startInPast || customIncomplete}
           className="tu-press"
           style={{
             width: '100%',
@@ -487,8 +551,8 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
             color: '#fff',
             fontSize: 15,
             fontWeight: 600,
-            cursor: busy || startInPast ? 'default' : 'pointer',
-            opacity: busy || startInPast ? 0.7 : 1,
+            cursor: busy || startInPast || customIncomplete ? 'default' : 'pointer',
+            opacity: busy || startInPast || customIncomplete ? 0.7 : 1,
           }}
         >
           {busy ? 'Publication…' : 'Publier et obtenir le lien'}
@@ -521,6 +585,17 @@ const roundBtn: React.CSSProperties = {
   justifyContent: 'center',
   cursor: 'pointer',
   color: C.ink,
+}
+
+const venueInput: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 14px',
+  borderRadius: 11,
+  border: `1px solid ${C.line}`,
+  background: C.paper,
+  fontSize: 14.5,
+  color: C.ink,
+  outline: 'none',
 }
 
 const stepperBtn: React.CSSProperties = {

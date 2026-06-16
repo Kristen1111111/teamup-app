@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
-import { CITIES } from '../lib/cities'
 import type { Profile, Sport } from '../lib/types'
-import { ChevronLeft, Pin, Lock, Users } from '../components/icons'
+import { ChevronLeft, Lock, Users } from '../components/icons'
 import SportPicker, { type SportSelection } from '../components/SportPicker'
+import CityField from '../components/CityField'
 import type { Go } from '../App'
 
 // Profile editing (F7): identity, zone, sports + level, and the privacy
@@ -71,7 +71,7 @@ export default function EditProfile({
     const patch = {
       first_name: fname,
       last_initial: lastInitial.trim().slice(0, 1).toUpperCase(),
-      city,
+      city: city.trim() || profile.city,
       perfect_match: perfectMatch.trim() || null,
       is_public: isPublic,
       hidden_from_search: hidden,
@@ -119,33 +119,8 @@ export default function EditProfile({
 
         {/* zone */}
         <Card label="MA ZONE">
-          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 13 }}>
-            {Array.from(new Set([profile.city, ...CITIES])).map((c) => {
-              const on = c === city
-              return (
-                <button
-                  key={c}
-                  onClick={() => setCity(c)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '8px 13px',
-                    borderRadius: 999,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    border: `1px solid ${on ? C.prune : C.line}`,
-                    background: on ? C.prune : C.paper,
-                    color: on ? '#fff' : C.ink,
-                    transition: 'all .15s',
-                  }}
-                >
-                  <Pin size={12} stroke={on ? '#fff' : C.prune} sw={1.9} />
-                  {c}
-                </button>
-              )
-            })}
+          <div style={{ marginTop: 13 }}>
+            <CityField value={city} onChange={setCity} />
           </div>
         </Card>
 

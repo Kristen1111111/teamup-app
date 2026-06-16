@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
-import { CITIES } from '../lib/cities'
 import type { Profile, Sport } from '../lib/types'
-import { Heart, Check, Pin, ChevronLeft } from '../components/icons'
+import { Heart, Check, ChevronLeft } from '../components/icons'
 import SportPicker, { type SportSelection } from '../components/SportPicker'
+import CityField from '../components/CityField'
 
 // Short 2-step onboarding (F7 · US1 + US10): sports + level, then zone + real
 // CGU acceptance. Persists everything and flips profile.onboarded to true.
@@ -52,7 +52,7 @@ export default function Onboarding({
   const sportKeys = Object.keys(picked)
 
   async function finish() {
-    if (!cgu || sportKeys.length === 0) return
+    if (!cgu || sportKeys.length === 0 || !city.trim()) return
     setBusy(true)
 
     // Replace the player's sports with the chosen set.
@@ -61,13 +61,14 @@ export default function Onboarding({
       .from('profile_sports')
       .insert(sportKeys.map((key) => ({ profile_id: profile.id, sport_key: key, level: picked[key] })))
 
+    const zone = city.trim()
     const cguAt = new Date().toISOString()
     await supabase
       .from('profiles')
-      .update({ city, onboarded: true, cgu_accepted_at: cguAt })
+      .update({ city: zone, onboarded: true, cgu_accepted_at: cguAt })
       .eq('id', profile.id)
 
-    setProfile({ ...profile, city, onboarded: true, cgu_accepted_at: cguAt })
+    setProfile({ ...profile, city: zone, onboarded: true, cgu_accepted_at: cguAt })
     setBusy(false)
     onDone()
   }
@@ -155,33 +156,8 @@ export default function Onboarding({
               On te montre en priorité les activités près de cette zone.
             </p>
 
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 18 }}>
-              {Array.from(new Set([profile.city, ...CITIES])).map((c) => {
-                const on = c === city
-                return (
-                  <button
-                    key={c}
-                    onClick={() => setCity(c)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '9px 14px',
-                      borderRadius: 999,
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      border: `1px solid ${on ? C.prune : C.line}`,
-                      background: on ? C.prune : C.card,
-                      color: on ? '#fff' : C.ink,
-                      transition: 'all .15s',
-                    }}
-                  >
-                    <Pin size={13} stroke={on ? '#fff' : C.prune} sw={1.9} />
-                    {c}
-                  </button>
-                )
-              })}
+            <div style={{ marginTop: 18 }}>
+              <CityField value={city} onChange={setCity} />
             </div>
 
             {/* real CGU acceptance */}
@@ -243,7 +219,12 @@ export default function Onboarding({
               </span>
             </button>
 
-            <button onClick={finish} disabled={!cgu || busy} className="tu-press" style={primaryBtn(!cgu || busy)}>
+            <button
+              onClick={finish}
+              disabled={!cgu || busy || !city.trim()}
+              className="tu-press"
+              style={primaryBtn(!cgu || busy || !city.trim())}
+            >
               {busy ? 'Création de ton profil…' : 'Commencer'}
             </button>
           </div>
