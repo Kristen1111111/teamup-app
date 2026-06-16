@@ -45,6 +45,17 @@ input {
   transform: scale(0.99);
 }
 
+/* Clickable profile avatar (quick photo upload) */
+.tu-avatar-edit {
+  transition: transform 0.08s;
+}
+.tu-avatar-edit:hover {
+  transform: scale(1.02);
+}
+.tu-avatar-edit:active {
+  transform: scale(0.98);
+}
+
 @keyframes tu-spin {
   to {
     transform: rotate(360deg);

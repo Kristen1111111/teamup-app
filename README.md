@@ -29,7 +29,7 @@ qu'ils soient utilisables de bout en bout.
 |-------|---------|---------|
 | **Près de toi** (feed) | `src/screens/Feed.tsx` | Activités actives, filtres par sport, bannière « se revoir », demande à rejoindre |
 | **Créer une activité** | `src/screens/Create.tsx` | Insère une activité (sport, créneau, lieu, niveau, places, poste, mode) |
-| **Profil & fiabilité** | `src/screens/Profile.tsx` | Ring de présence, stats, badges, sports, historique, toggle « ouvert à se revoir » |
+| **Profil & fiabilité** | `src/screens/Profile.tsx` | Ring de présence, stats, badges, sports, historique, toggle « ouvert à se revoir », **photo de profil modifiable en un clic sur l'avatar** |
 | **Ouvert à se revoir** | `src/screens/Revoir.tsx` | Co-joueurs du dernier match, intentions, **match réciproque** |
 | Connexion | `src/screens/Login.tsx` | Magic-link e-mail (Supabase Auth) |
 

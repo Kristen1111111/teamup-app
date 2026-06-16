@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import type { Profile as ProfileT, ProfilePhoto, Sport } from '../lib/types'
-import { Check, Share, Dots, Heart } from '../components/icons'
+import { Check, Share, Dots, Heart, Camera } from '../components/icons'
 import Avatar from '../components/Avatar'
 import PhotoGallery, { validatePhoto } from '../components/PhotoGallery'
-import { listGalleryPhotos, addGalleryPhoto, deleteGalleryPhoto } from '../lib/photos'
+import { listGalleryPhotos, addGalleryPhoto, deleteGalleryPhoto, uploadAvatar } from '../lib/photos'
 import type { ScreenName } from '../App'
 
 type PlayingRow = { level: string; sport: Sport }
@@ -41,6 +41,11 @@ export default function Profile({
   const [photosLoading, setPhotosLoading] = useState(true)
   const [photosBusy, setPhotosBusy] = useState(false)
   const [photosError, setPhotosError] = useState<string | null>(null)
+  // Avatar quick-upload: clicking the K (or photo) opens the file picker right
+  // here, no detour through "Modifier le profil".
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const avatarInput = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     supabase
@@ -155,6 +160,27 @@ export default function Profile({
     } catch (err) {
       setPhotos(prev) // rollback
       setPhotosError(err instanceof Error ? err.message : 'La suppression a échoué.')
+    }
+  }
+
+  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file
+    if (!file) return
+    const invalid = validatePhoto(file)
+    if (invalid) {
+      setAvatarError(invalid)
+      return
+    }
+    setAvatarError(null)
+    setAvatarBusy(true)
+    try {
+      const url = await uploadAvatar(profile.id, file)
+      setProfile({ ...profile, avatar_url: url })
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "L'envoi de la photo a échoué.")
+    } finally {
+      setAvatarBusy(false)
     }
   }
 
@@ -325,13 +351,60 @@ export default function Profile({
               padding: 24,
             }}
           >
-        <Avatar
-          url={profile.avatar_url}
-          color="linear-gradient(150deg,#5C2049,#8A3A6F)"
-          letter={profile.first_name[0]}
-          size={88}
-          verified={profile.verified}
-        />
+        <button
+          type="button"
+          onClick={() => !avatarBusy && avatarInput.current?.click()}
+          title={profile.avatar_url ? 'Changer ma photo' : 'Ajouter ma photo'}
+          className="tu-avatar-edit"
+          style={{
+            position: 'relative',
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            borderRadius: '50%',
+            cursor: avatarBusy ? 'default' : 'pointer',
+            opacity: avatarBusy ? 0.7 : 1,
+          }}
+        >
+          <Avatar
+            url={profile.avatar_url}
+            color="linear-gradient(150deg,#5C2049,#8A3A6F)"
+            letter={profile.first_name[0]}
+            size={88}
+            verified={profile.verified}
+          />
+          {/* camera badge — bottom-left so it never overlaps the verified pastille */}
+          <span
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 2,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              background: C.prune,
+              border: `3px solid ${C.card}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Camera size={14} stroke="#fff" />
+          </span>
+        </button>
+        <input ref={avatarInput} type="file" hidden accept="image/*" onChange={onPickAvatar} />
+        {avatarBusy && (
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginTop: 8 }}>Envoi de la photo…</span>
+        )}
+        {avatarError && (
+          <span
+            role="alert"
+            style={{ fontSize: 12, color: '#A53F3F', fontWeight: 600, marginTop: 8, maxWidth: 220 }}
+          >
+            {avatarError}
+          </span>
+        )}
         <h1 style={{ fontFamily: FONT.serif, fontSize: 27, fontWeight: 500, marginTop: 12 }}>
           {profile.first_name} {profile.last_initial}
         </h1>
