@@ -17,6 +17,8 @@ export type Profile = {
   first_name: string
   last_initial: string
   city: string
+  home_lat: number | null
+  home_lng: number | null
   avatar_color: string
   verified: boolean
   open_to_meet: boolean

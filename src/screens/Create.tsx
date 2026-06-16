@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { C, FONT } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
 import { venuesForCity, hasVenueCatalogue } from '../lib/cities'
+import { geocodeOne, type Place } from '../lib/geocode'
 import type { Profile, Sport } from '../lib/types'
 import { Close, Timer, Pin, Lock, Minus, Plus, Chevron } from '../components/icons'
+import MapView from '../components/MapView'
 import type { Go } from '../App'
 
 const WHEN = [
@@ -67,17 +69,39 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
   const [customMode, setCustomMode] = useState(!hasCatalogue)
   const [vName, setVName] = useState('')
   const [vAddr, setVAddr] = useState('')
+  const [vCoords, setVCoords] = useState<Place | null>(null)
+  const [geoBusy, setGeoBusy] = useState(false)
   const usingCustom = customMode || !hasCatalogue
   const customIncomplete = usingCustom && (!vName.trim() || !vAddr.trim())
-  // The " · {city}" suffix is what the feed parses to scope an activity to a zone,
-  // so a free-form venue still surfaces in the creator's (and city's) feed.
   const venue = usingCustom
     ? {
-        code: vName.trim().toUpperCase().slice(0, 28) || profile.city.toUpperCase(),
-        name: `${vName.trim()} · ${profile.city}`,
+        code: vName.trim().toUpperCase().slice(0, 28) || 'LIEU',
+        name: vName.trim(),
         address: vAddr.trim(),
       }
     : venues[cVenue] ?? venues[0]
+
+  // Geocode the typed address (OpenStreetMap) so the activity gets real coords —
+  // that's what places it on the distance-based feed. Debounced as the user types.
+  useEffect(() => {
+    if (!usingCustom) {
+      setVCoords(null)
+      return
+    }
+    const q = vAddr.trim()
+    if (q.length < 5) {
+      setVCoords(null)
+      setGeoBusy(false)
+      return
+    }
+    setGeoBusy(true)
+    const t = setTimeout(async () => {
+      const hit = await geocodeOne(vName.trim() ? `${vName.trim()} ${q}` : q)
+      setVCoords(hit)
+      setGeoBusy(false)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [vAddr, vName, usingCustom])
   // Resolve the concrete start so we can warn before publishing a slot that's
   // already in the past (e.g. "Ce soir 19:30" created at 20:45) — such a match
   // would land straight in "Passées" and never surface in the feed.
@@ -106,6 +130,12 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
     const end = new Date(start.getTime() + 90 * 60 * 1000)
     const level = LEVELS.find((l) => l.k === cLevel)!.full
     const poste = cPoste === 'any' ? null : POSTES.find((p) => p.k === cPoste)!.l
+    // Real coordinates: geocoded address for custom venues, catalogue coords
+    // otherwise. Falls back to a last-chance geocode if the debounce hadn't run.
+    const cat = venues[cVenue] ?? venues[0]
+    const coords = usingCustom
+      ? vCoords ?? (await geocodeOne(vName.trim() ? `${vName.trim()} ${vAddr.trim()}` : vAddr.trim()))
+      : { lat: cat.lat, lng: cat.lng }
     const { data, error: insertError } = await supabase
       .from('activities')
       .insert({
@@ -121,6 +151,8 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
         mode: cMode,
         poste,
         total_slots: cPlaces,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
       })
       .select('id')
       .single()
@@ -281,10 +313,23 @@ export default function Create({ profile, go }: { profile: Profile; go: Go }) {
                   placeholder="Adresse complète (ex. 5 rue du Sport, 67000 Strasbourg)"
                   style={venueInput}
                 />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, fontWeight: 500 }}>
-                  <Pin size={13} stroke={C.prune} sw={1.8} />
-                  Zone : <strong style={{ color: C.ink }}>{profile.city}</strong> — ton activité apparaîtra dans le feed de cette ville.
-                </div>
+                {geoBusy && (
+                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>Localisation du lieu…</div>
+                )}
+                {!geoBusy && vCoords && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.green, fontWeight: 600 }}>
+                      <Pin size={13} stroke={C.green} sw={1.8} />
+                      Lieu localisé — les joueurs proches le verront.
+                    </div>
+                    <MapView lat={vCoords.lat} lng={vCoords.lng} zoom={14} height={150} />
+                  </>
+                )}
+                {!geoBusy && !vCoords && vAddr.trim().length >= 5 && (
+                  <div style={{ fontSize: 12, color: '#8A5A1E', fontWeight: 500 }}>
+                    Adresse introuvable — précise-la (rue, code postal, ville).
+                  </div>
+                )}
               </div>
             ) : (
               <>

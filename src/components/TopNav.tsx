@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { C } from '../lib/tokens'
 import { supabase } from '../lib/supabase'
-import { Pin, Chevron, Plus, Check, Bell, Message } from './icons'
+import { Pin, Chevron, Plus, Bell, Message } from './icons'
 import type { ScreenName } from '../App'
 import type { Profile } from '../lib/types'
-import { CITIES } from '../lib/cities'
+import LocationPicker from './LocationPicker'
+import type { Place } from '../lib/geocode'
 
 const LINKS: { k: ScreenName; l: string }[] = [
   { k: 'feed', l: 'Activités' },
@@ -29,18 +30,18 @@ export default function TopNav({
   msgUnread?: number
 }) {
   const [cityOpen, setCityOpen] = useState(false)
-  const [typed, setTyped] = useState('')
 
-  // de-duplicated list that always contains the current city
-  const cities = Array.from(new Set([profile.city, ...CITIES]))
+  const current: Place | null =
+    profile.home_lat != null && profile.home_lng != null
+      ? { label: profile.city, lat: profile.home_lat, lng: profile.home_lng }
+      : null
 
-  async function pickCity(city: string) {
-    const next = city.trim()
+  async function pickZone(p: Place | null) {
+    if (!p) return
     setCityOpen(false)
-    setTyped('')
-    if (!next || next === profile.city) return
-    setProfile({ ...profile, city: next }) // optimistic
-    await supabase.from('profiles').update({ city: next }).eq('id', profile.id)
+    const patch = { city: p.label, home_lat: p.lat, home_lng: p.lng }
+    setProfile({ ...profile, ...patch }) // optimistic
+    await supabase.from('profiles').update(patch).eq('id', profile.id)
   }
 
   return (
@@ -221,39 +222,12 @@ export default function TopNav({
                     letterSpacing: '1px',
                     color: C.muted,
                     fontWeight: 600,
-                    padding: '4px 10px 8px',
+                    padding: '4px 4px 8px',
                   }}
                 >
-                  CHANGER DE VILLE
+                  CHANGER DE ZONE
                 </div>
-                <input
-                  value={typed}
-                  onChange={(e) => setTyped(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') pickCity(typed)
-                  }}
-                  placeholder="Autre ville… (Entrée)"
-                  style={{
-                    width: '100%',
-                    padding: '9px 10px',
-                    margin: '0 0 6px',
-                    borderRadius: 9,
-                    border: `1px solid ${C.line}`,
-                    background: C.paper,
-                    fontSize: 13.5,
-                    color: C.ink,
-                    outline: 'none',
-                  }}
-                />
-                {cities.map((c) => {
-                  const on = c === profile.city
-                  return (
-                    <button key={c} onClick={() => pickCity(c)} style={menuItem(on)}>
-                      <span>{c}</span>
-                      {on && <Check size={12} stroke={C.prune} sw={3} />}
-                    </button>
-                  )
-                })}
+                <LocationPicker value={current} onChange={pickZone} showMap={false} />
               </div>
             </>
           )}
@@ -329,29 +303,11 @@ const popover: React.CSSProperties = {
   top: 'calc(100% + 8px)',
   right: 0,
   zIndex: 60,
-  minWidth: 200,
+  width: 300,
+  maxWidth: '80vw',
   background: C.card,
   border: `1px solid ${C.line}`,
   borderRadius: 14,
-  padding: 6,
+  padding: 10,
   boxShadow: '0 18px 40px -16px rgba(40,28,34,.4)',
-}
-
-function menuItem(on: boolean): React.CSSProperties {
-  return {
-    width: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    padding: '9px 10px',
-    borderRadius: 9,
-    border: 'none',
-    background: on ? C.pruneSoft : 'transparent',
-    color: on ? C.prune : C.ink,
-    fontSize: 13.5,
-    fontWeight: 600,
-    cursor: 'pointer',
-    textAlign: 'left',
-  }
 }

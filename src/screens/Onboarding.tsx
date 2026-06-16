@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 import type { Profile, Sport } from '../lib/types'
 import { Heart, Check, ChevronLeft } from '../components/icons'
 import SportPicker, { type SportSelection } from '../components/SportPicker'
-import CityField from '../components/CityField'
+import LocationPicker from '../components/LocationPicker'
+import type { Place } from '../lib/geocode'
 
 // Short 2-step onboarding (F7 · US1 + US10): sports + level, then zone + real
 // CGU acceptance. Persists everything and flips profile.onboarded to true.
@@ -20,7 +21,11 @@ export default function Onboarding({
   const [sports, setSports] = useState<Sport[]>([])
   const [step, setStep] = useState<1 | 2>(1)
   const [picked, setPicked] = useState<SportSelection>({})
-  const [city, setCity] = useState(profile.city)
+  const [loc, setLoc] = useState<Place | null>(
+    profile.home_lat != null && profile.home_lng != null
+      ? { label: profile.city, lat: profile.home_lat, lng: profile.home_lng }
+      : null,
+  )
   const [cgu, setCgu] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -52,7 +57,7 @@ export default function Onboarding({
   const sportKeys = Object.keys(picked)
 
   async function finish() {
-    if (!cgu || sportKeys.length === 0 || !city.trim()) return
+    if (!cgu || sportKeys.length === 0 || !loc) return
     setBusy(true)
 
     // Replace the player's sports with the chosen set.
@@ -61,14 +66,16 @@ export default function Onboarding({
       .from('profile_sports')
       .insert(sportKeys.map((key) => ({ profile_id: profile.id, sport_key: key, level: picked[key] })))
 
-    const zone = city.trim()
-    const cguAt = new Date().toISOString()
-    await supabase
-      .from('profiles')
-      .update({ city: zone, onboarded: true, cgu_accepted_at: cguAt })
-      .eq('id', profile.id)
+    const patch = {
+      city: loc.label,
+      home_lat: loc.lat,
+      home_lng: loc.lng,
+      onboarded: true,
+      cgu_accepted_at: new Date().toISOString(),
+    }
+    await supabase.from('profiles').update(patch).eq('id', profile.id)
 
-    setProfile({ ...profile, city: zone, onboarded: true, cgu_accepted_at: cguAt })
+    setProfile({ ...profile, ...patch })
     setBusy(false)
     onDone()
   }
@@ -153,11 +160,12 @@ export default function Onboarding({
               Ta zone de jeu
             </h1>
             <p style={{ marginTop: 8, fontSize: 14.5, color: C.muted, fontWeight: 500, lineHeight: 1.5 }}>
-              On te montre en priorité les activités près de cette zone.
+              Cherche ton quartier (arrondissement, ou ville pour les plus petites). On te montrera les activités à
+              proximité, à vol d'oiseau depuis ce point.
             </p>
 
             <div style={{ marginTop: 18 }}>
-              <CityField value={city} onChange={setCity} />
+              <LocationPicker value={loc} onChange={setLoc} />
             </div>
 
             {/* real CGU acceptance */}
@@ -221,9 +229,9 @@ export default function Onboarding({
 
             <button
               onClick={finish}
-              disabled={!cgu || busy || !city.trim()}
+              disabled={!cgu || busy || !loc}
               className="tu-press"
-              style={primaryBtn(!cgu || busy || !city.trim())}
+              style={primaryBtn(!cgu || busy || !loc)}
             >
               {busy ? 'Création de ton profil…' : 'Commencer'}
             </button>

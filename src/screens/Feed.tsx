@@ -5,7 +5,6 @@ import type { Activity, Profile, Sport } from '../lib/types'
 import { formatSlot, placesLabel, slotsLeft, activityDistanceKm, formatDistance, activityHeadline } from '../lib/format'
 import { Pin, Clock, ChevronRight, Heart, VerifiedDot } from '../components/icons'
 import { ACTIVITY_SELECT } from '../lib/queries'
-import { venueInCity } from '../lib/cities'
 import { navigate } from '../lib/router'
 import { useGeo } from '../lib/useGeo'
 import type { Go } from '../App'
@@ -19,10 +18,10 @@ const DATE_DEFS: { k: DateKey; l: string }[] = [
 const LEVEL_DEFS = ['all', 'Débutant', 'Intermédiaire', 'Confirmé'] as const
 type LevelKey = (typeof LEVEL_DEFS)[number]
 const DIST_DEFS: { km: number | null; l: string }[] = [
-  { km: null, l: 'Toutes' },
-  { km: 2, l: '2 km' },
   { km: 5, l: '5 km' },
   { km: 10, l: '10 km' },
+  { km: 25, l: '25 km' },
+  { km: null, l: 'Toutes' },
 ]
 
 function endOfToday(): Date {
@@ -42,7 +41,8 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
   const [dateKey, setDateKey] = useState<DateKey>('all')
   const [level, setLevel] = useState<LevelKey>('all')
   const [onlyAvail, setOnlyAvail] = useState(false)
-  const [maxDist, setMaxDist] = useState<number | null>(null)
+  // Distance-first: default to a 10 km radius around the player's home zone.
+  const [maxDist, setMaxDist] = useState<number | null>(10)
   const [verifiedOnly, setVerifiedOnly] = useState(false) // F10
   const [blocked, setBlocked] = useState<Set<string>>(new Set()) // F10
   const [panelOpen, setPanelOpen] = useState(false)
@@ -72,15 +72,22 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
   }, [])
 
   const geoOn = geo.status === 'granted' && !!geo.coords
+  // The feed is centred on the home neighbourhood by default; live GPS ("Près de
+  // moi") overrides it when granted. Everything is distance-based from this point.
+  const home =
+    profile.home_lat != null && profile.home_lng != null
+      ? { lat: profile.home_lat, lng: profile.home_lng }
+      : null
+  const center = geoOn ? geo.coords : home
+  const hasCenter = !!center
 
-  // Apply every filter, then sort by proximity when geolocation is on, else by date.
+  // Apply every filter, then sort by proximity when a centre exists, else by date.
   const shown = useMemo(() => {
     const todayEnd = endOfToday().getTime()
     const weekEnd = Date.now() + 7 * 24 * 3600 * 1000
     const rows = activities
-      .map((a) => ({ a, dist: activityDistanceKm(a, geoOn ? geo.coords : null) }))
+      .map((a) => ({ a, dist: activityDistanceKm(a, center) }))
       .filter(({ a, dist }) => {
-        if (!venueInCity(a.venue_name, profile.city)) return false // centre le feed sur la zone choisie
         if (blocked.has(a.organizer_id)) return false // F10 — masque les profils bloqués
         if (verifiedOnly && !a.organizer.verified) return false // F10 — vérifiés uniquement
         if (sport !== 'all' && a.sport_key !== sport) return false
@@ -89,16 +96,18 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
         if (dateKey === 'week' && t > weekEnd) return false
         if (level !== 'all' && a.level !== level && a.level !== 'Tous niveaux') return false
         if (onlyAvail && slotsLeft(a) <= 0) return false
-        if (geoOn && maxDist != null && dist != null && dist > maxDist) return false
+        // Distance radius around the home/GPS centre (e.g. ≤ 10 km).
+        if (hasCenter && maxDist != null && (dist == null || dist > maxDist)) return false
         return true
       })
     rows.sort((x, y) =>
-      geoOn && x.dist != null && y.dist != null
+      hasCenter && x.dist != null && y.dist != null
         ? x.dist - y.dist
         : +new Date(x.a.starts_at) - +new Date(y.a.starts_at),
     )
     return rows
-  }, [activities, sport, dateKey, level, onlyAvail, maxDist, verifiedOnly, blocked, geoOn, geo.coords, profile.city])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities, sport, dateKey, level, onlyAvail, maxDist, verifiedOnly, blocked, geoOn, geo.coords, profile.home_lat, profile.home_lng])
 
   // Only activities with a free place are actually "looking for players" — a full
   // one is still listed (waitlist stays open) but must not inflate the headline.
@@ -134,7 +143,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
             : shown.length > 0
               ? `${shown.length} activité${shown.length > 1 ? 's' : ''} près de toi · liste d'attente ouverte`
               : 'Aucune activité pour le moment'}
-          {geoOn && shown.length > 0 && ' · triées par distance'}
+          {hasCenter && shown.length > 0 && ' · triées par distance'}
         </p>
       </div>
 
@@ -251,7 +260,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
           </FilterGroup>
 
           <FilterGroup label="DISTANCE">
-            {geoOn ? (
+            {hasCenter ? (
               DIST_DEFS.map((d) => (
                 <Pill key={d.l} on={maxDist === d.km} onClick={() => setMaxDist(d.km)}>
                   {d.l}
@@ -259,7 +268,7 @@ export default function Feed({ profile, go }: { profile: Profile; go: Go }) {
               ))
             ) : (
               <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 500 }}>
-                Active « Près de moi » pour filtrer par distance.
+                Renseigne ta zone (profil) ou active « Près de moi » pour filtrer par distance.
               </span>
             )}
           </FilterGroup>

@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 import type { Profile, Sport } from '../lib/types'
 import { ChevronLeft, Lock, Users } from '../components/icons'
 import SportPicker, { type SportSelection } from '../components/SportPicker'
-import CityField from '../components/CityField'
+import LocationPicker from '../components/LocationPicker'
+import type { Place } from '../lib/geocode'
 import type { Go } from '../App'
 
 // Profile editing (F7): identity, zone, sports + level, and the privacy
@@ -21,7 +22,11 @@ export default function EditProfile({
   const [sports, setSports] = useState<Sport[]>([])
   const [firstName, setFirstName] = useState(profile.first_name)
   const [lastInitial, setLastInitial] = useState(profile.last_initial)
-  const [city, setCity] = useState(profile.city)
+  const [loc, setLoc] = useState<Place | null>(
+    profile.home_lat != null && profile.home_lng != null
+      ? { label: profile.city, lat: profile.home_lat, lng: profile.home_lng }
+      : null,
+  )
   const [perfectMatch, setPerfectMatch] = useState(profile.perfect_match ?? '')
   const [picked, setPicked] = useState<SportSelection>({})
   const [isPublic, setIsPublic] = useState(profile.is_public)
@@ -71,7 +76,9 @@ export default function EditProfile({
     const patch = {
       first_name: fname,
       last_initial: lastInitial.trim().slice(0, 1).toUpperCase(),
-      city: city.trim() || profile.city,
+      city: loc?.label ?? profile.city,
+      home_lat: loc?.lat ?? profile.home_lat,
+      home_lng: loc?.lng ?? profile.home_lng,
       perfect_match: perfectMatch.trim() || null,
       is_public: isPublic,
       hidden_from_search: hidden,
@@ -120,7 +127,7 @@ export default function EditProfile({
         {/* zone */}
         <Card label="MA ZONE">
           <div style={{ marginTop: 13 }}>
-            <CityField value={city} onChange={setCity} />
+            <LocationPicker value={loc} onChange={setLoc} />
           </div>
         </Card>
 
